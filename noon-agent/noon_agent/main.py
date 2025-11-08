@@ -1,10 +1,9 @@
-"""LangGraph entrypoints for the Noon agent."""
+"""LangGraph entrypoints for the Noon agent (legacy - deprecated)."""
 
 from __future__ import annotations
 
-from typing import Any, Dict, List, Literal
+from typing import Any, Dict, List
 
-from datetime import datetime 
 from langchain_core.messages import AIMessage, BaseMessage, HumanMessage
 from langchain_core.language_models.chat_models import BaseChatModel
 from langchain_core.tools import StructuredTool
@@ -12,54 +11,105 @@ from langchain_openai import ChatOpenAI
 from langgraph.graph import END, START, StateGraph
 from langgraph.prebuilt import ToolNode
 
-# from .config import AgentSettings, get_settings
-# from .helpers import build_context_block, build_prompt
-# from .mocks import clock_tool, ping_tool
-from .schemas import AgentState, TaskInput
-
-class State(TypedDict):
-    something: str
-    action: Literal["create", "delete", "update", "read"]
-    start_time: datetime
-    end_time: datetime
-    auth: dict 
-    """any params relevant for auth when making google calendar api calls"""
-
-class OutputState(TypedDict):
-    summary: dict
-
-def route_action(state: State):
-    if state["action"] == "create":
-        return create_event(state)
-    elif state["action"] == "read":
-        return read_event(state)
-    elif state["update"] == "update":
-        return update_event(state)
-    else:
-        return delete_event(state)
+from .config import AgentSettings, get_settings
+from .helpers import build_context_block, build_prompt
+from .mocks import clock_tool, ping_tool
+from .schemas import AgentState
 
 
-def create_event(state: State):
-    #todo
-    pass
+def _make_model(settings: AgentSettings) -> BaseChatModel:
+    """Lazy construct the model with the project's defaults."""
+    if not settings.openai_api_key:
+        raise ValueError("OPENAI_API_KEY is not configured")
+
+    return ChatOpenAI(
+        model=settings.model,
+        temperature=settings.temperature,
+        max_retries=settings.max_retries,
+        api_key=settings.openai_api_key,
+    )
 
 
-def read_event(state: State):
-    pass
+def _route_after_agent(state: AgentState) -> str:
+    """Decide whether to call a tool or finish the run."""
+    messages: List[BaseMessage] = state["messages"]
+    if not messages:
+        return END
 
-def update_event(state: State):
-    pass
+    last = messages[-1]
+    if isinstance(last, AIMessage) and last.tool_calls:
+        return "tools"
+    return END
 
-def delete_event(state: State):
-    pass
 
-graph_builder = StateGraph(State, output_schema=OutputState)
-graph_builder.add_conditional_edges(
-    START, route_action, ["list off poss actions"]
-)
-graph_builder.add_node(..)
-graoh_builder.add_node(..., END)
-graph = graph_builder.compile(name="NOON")
+def build_agent_graph(
+    settings: AgentSettings | None = None, llm: BaseChatModel | None = None
+):
+    """
+    Create and compile the LangGraph agent (legacy version).
+
+    DEPRECATED: Use build_calendar_graph() for the new calendar agent.
+    """
+    resolved_settings = settings or get_settings()
+    active_llm = llm or _make_model(resolved_settings)
+
+    tools = [
+        StructuredTool.from_function(ping_tool, name="ping", description="Health-check tool."),
+        StructuredTool.from_function(
+            clock_tool, name="clock", description="Return the current UTC timestamp."
+        ),
+    ]
+    tool_node = ToolNode(tools=tools)
+
+    prompt = build_prompt()
+    chain = prompt | active_llm.bind(tools=tools)
+
+    def agent_node(state: AgentState) -> Dict[str, List[BaseMessage]]:
+        response = chain.invoke({"messages": state["messages"]})
+        return {"messages": [response]}
+
+    graph = StateGraph(AgentState)
+    graph.add_node("agent", agent_node)
+    graph.add_node("tools", tool_node)
+    graph.add_edge(START, "agent")
+    graph.add_conditional_edges(
+        "agent",
+        _route_after_agent,
+        {
+            "tools": "tools",
+            END: END,
+        },
+    )
+    graph.add_edge("tools", "agent")
+
+    return graph.compile()
+
+
+def invoke_agent(
+    payload: Dict[str, Any],
+    settings: AgentSettings | None = None,
+    llm: BaseChatModel | None = None,
+) -> Any:
+    """
+    Convenience helper to invoke the compiled graph (legacy version).
+
+    DEPRECATED: Use invoke_calendar_agent() for the new calendar agent.
+    """
+    query = payload.get("query", "").strip()
+    if not query:
+        raise ValueError("A query is required to run the agent.")
+
+    context = payload.get("context") or {}
+    context_block = build_context_block(context)
+    composed_prompt = f"{query}\n\n{context_block}"
+
+    initial_state: AgentState = {
+        "messages": [HumanMessage(content=composed_prompt)],
+        "context": context,
+    }
+
+    graph = build_agent_graph(settings=settings, llm=llm)
+    return graph.invoke(initial_state)
 
 
 

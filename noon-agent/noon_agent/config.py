@@ -12,6 +12,7 @@ class AgentSettings(BaseSettings):
 
     model_config = SettingsConfigDict(env_file=".env", env_file_encoding="utf-8")
 
+    # LLM Settings
     model: str = Field(
         default="gpt-4o-mini",
         description="Default chat model used by the graph.",
@@ -24,6 +25,10 @@ class AgentSettings(BaseSettings):
         default=False,
         description="Enable LangSmith tracing when configured.",
     )
+
+    # Supabase Settings
+    supabase_url: Optional[str] = Field(default=None, description="Supabase project URL")
+    supabase_key: Optional[str] = Field(default=None, description="Supabase anon/service key")
 
 
 @lru_cache(maxsize=1)
