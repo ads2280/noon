@@ -1,0 +1,21 @@
+[project]
+name = "noon-backend"
+version = "0.1.0"
+description = "Minimal backend shim that forwards requests to the Noon LangGraph deployment."
+authors = [{ name = "Noon" }]
+requires-python = ">=3.11"
+dependencies = [
+    "fastapi>=0.115.0",
+    "uvicorn[standard]>=0.30.0",
+    "langgraph-sdk>=0.2.9",
+    "pydantic>=2.5",
+    "pydantic-settings>=2.5",
+    "python-dotenv>=1.0",
+]
+
+[project.optional-dependencies]
+dev = ["pytest>=8.0"]
+
+[build-system]
+requires = ["setuptools>=68", "wheel"]
+build-backend = "setuptools.build_meta"
