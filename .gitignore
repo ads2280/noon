@@ -9,3 +9,5 @@ __pycache__/
 noon-agent/.venv/
 noon-agent/.pytest_cache/
 noon-agent/noon_agent.egg-info/
+noon-backend/*.ipynb
+noon-backend/.ipynb_checkpoints/

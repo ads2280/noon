@@ -62,3 +62,15 @@ def run_agent(payload: AgentRunRequest) -> Dict[str, Any]:
         return {"events": events}
     except Exception as exc:  # pragma: no cover - surfaced via HTTP
         raise HTTPException(status_code=502, detail=f"Agent invocation failed: {exc}") from exc
+
+
+@app.post("/agent/test")
+def run_agent_test() -> Dict[str, Any]:
+    """Trigger a canned test run to verify tracing works end-to-end."""
+
+    payload = AgentRunRequest(
+        messages=[Message(role="human", content="Please schedule lunch tomorrow at 1pm")],
+    )
+    result = run_agent(payload)
+    latest = result["events"][-1]["data"] if result["events"] else {}
+    return {"response": latest.get("response"), "success": latest.get("success")}

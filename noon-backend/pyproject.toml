@@ -8,14 +8,19 @@ dependencies = [
     "fastapi>=0.115.0",
     "uvicorn[standard]>=0.30.0",
     "langgraph-sdk>=0.2.9",
+    "langgraph>=0.2.53",
     "pydantic>=2.5",
     "pydantic-settings>=2.5",
     "python-dotenv>=1.0",
     "dotenv>=0.9.9",
+    "langchain-core>=0.2.27",
 ]
 
 [project.optional-dependencies]
 dev = ["pytest>=8.0"]
+
+[tool.setuptools]
+py-modules = ["main", "schemas"]
 
 [build-system]
 requires = ["setuptools>=68", "wheel"]
