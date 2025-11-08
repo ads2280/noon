@@ -11,7 +11,7 @@ from pydantic import BaseModel, Field
 from pydantic_settings import BaseSettings, SettingsConfigDict
 import uvicorn
 
-from noon_backend import create_app as create_supabase_app
+from app import create_app as create_supabase_app
 
 load_dotenv()
 
