@@ -1,115 +1,106 @@
-"""LangGraph entrypoints for the Noon agent (legacy - deprecated)."""
+"""LangGraph entrypoints for the Noon agent (legacy - deprecated).
+
+DEPRECATED: This is a placeholder implementation for backwards compatibility.
+Use `calendar_graph.py` and `invoke_calendar_agent()` for the real calendar agent.
+"""
 
 from __future__ import annotations
 
-from typing import Any, Dict, List
+from datetime import datetime
+from typing import Any, Dict, Literal, TypedDict
 
-from langchain_core.messages import AIMessage, BaseMessage, HumanMessage
-from langchain_core.language_models.chat_models import BaseChatModel
-from langchain_core.tools import StructuredTool
-from langchain_openai import ChatOpenAI
 from langgraph.graph import END, START, StateGraph
-from langgraph.prebuilt import ToolNode
-
-from .config import AgentSettings, get_settings
-from .helpers import build_context_block, build_prompt
-from .mocks import clock_tool, ping_tool
-from .schemas import AgentState
 
 
-def _make_model(settings: AgentSettings) -> BaseChatModel:
-    """Lazy construct the model with the project's defaults."""
-    if not settings.openai_api_key:
-        raise ValueError("OPENAI_API_KEY is not configured")
+class State(TypedDict, total=False):
+    """Internal state propagated between graph nodes."""
 
-    return ChatOpenAI(
-        model=settings.model,
-        temperature=settings.temperature,
-        max_retries=settings.max_retries,
-        api_key=settings.openai_api_key,
-    )
+    action: Literal["create", "delete", "update", "read"]
+    start_time: datetime | None
+    end_time: datetime | None
+    auth: Dict[str, Any]
+    summary: str
 
 
-def _route_after_agent(state: AgentState) -> str:
-    """Decide whether to call a tool or finish the run."""
-    messages: List[BaseMessage] = state["messages"]
-    if not messages:
-        return END
+class OutputState(TypedDict):
+    """Output state returned by the graph."""
 
-    last = messages[-1]
-    if isinstance(last, AIMessage) and last.tool_calls:
-        return "tools"
-    return END
+    summary: str
 
 
-def build_agent_graph(
-    settings: AgentSettings | None = None, llm: BaseChatModel | None = None
-):
+def route_action(state: State) -> str:
+    """Select the next node based on requested action; default to read."""
+    return state.get("action", "read")
+
+
+def _with_summary(state: State, message: str) -> State:
+    """Helper to add summary to state."""
+    next_state = dict(state)
+    next_state["summary"] = message
+    return next_state
+
+
+def create_event(state: State) -> State:
+    """Placeholder for creating an event."""
+    return _with_summary(state, "Created event (placeholder).")
+
+
+def read_event(state: State) -> State:
+    """Placeholder for reading an event."""
+    return _with_summary(state, "Fetched event details (placeholder).")
+
+
+def update_event(state: State) -> State:
+    """Placeholder for updating an event."""
+    return _with_summary(state, "Updated event (placeholder).")
+
+
+def delete_event(state: State) -> State:
+    """Placeholder for deleting an event."""
+    return _with_summary(state, "Deleted event (placeholder).")
+
+
+# Build the legacy graph
+graph_builder = StateGraph(State, output_schema=OutputState)
+graph_builder.add_node("create", create_event)
+graph_builder.add_node("read", read_event)
+graph_builder.add_node("update", update_event)
+graph_builder.add_node("delete", delete_event)
+
+graph_builder.add_conditional_edges(
+    START,
+    route_action,
+    {
+        "create": "create",
+        "read": "read",
+        "update": "update",
+        "delete": "delete",
+    },
+)
+
+for action in ("create", "read", "update", "delete"):
+    graph_builder.add_edge(action, END)
+
+graph = graph_builder.compile(name="noon-agent")
+
+
+def build_agent_graph() -> StateGraph:
     """
-    Create and compile the LangGraph agent (legacy version).
+    Return the compiled graph for compatibility with earlier imports.
 
-    DEPRECATED: Use build_calendar_graph() for the new calendar agent.
+    DEPRECATED: Use build_calendar_graph() instead.
     """
-    resolved_settings = settings or get_settings()
-    active_llm = llm or _make_model(resolved_settings)
-
-    tools = [
-        StructuredTool.from_function(ping_tool, name="ping", description="Health-check tool."),
-        StructuredTool.from_function(
-            clock_tool, name="clock", description="Return the current UTC timestamp."
-        ),
-    ]
-    tool_node = ToolNode(tools=tools)
-
-    prompt = build_prompt()
-    chain = prompt | active_llm.bind(tools=tools)
-
-    def agent_node(state: AgentState) -> Dict[str, List[BaseMessage]]:
-        response = chain.invoke({"messages": state["messages"]})
-        return {"messages": [response]}
-
-    graph = StateGraph(AgentState)
-    graph.add_node("agent", agent_node)
-    graph.add_node("tools", tool_node)
-    graph.add_edge(START, "agent")
-    graph.add_conditional_edges(
-        "agent",
-        _route_after_agent,
-        {
-            "tools": "tools",
-            END: END,
-        },
-    )
-    graph.add_edge("tools", "agent")
-
-    return graph.compile()
+    return graph
 
 
-def invoke_agent(
-    payload: Dict[str, Any],
-    settings: AgentSettings | None = None,
-    llm: BaseChatModel | None = None,
-) -> Any:
+def invoke_agent(state: State) -> OutputState:
     """
-    Convenience helper to invoke the compiled graph (legacy version).
+    Convenience helper that runs the compiled graph.
 
-    DEPRECATED: Use invoke_calendar_agent() for the new calendar agent.
+    DEPRECATED: Use invoke_calendar_agent() instead.
     """
-    query = payload.get("query", "").strip()
-    if not query:
-        raise ValueError("A query is required to run the agent.")
-
-    context = payload.get("context") or {}
-    context_block = build_context_block(context)
-    composed_prompt = f"{query}\n\n{context_block}"
-
-    initial_state: AgentState = {
-        "messages": [HumanMessage(content=composed_prompt)],
-        "context": context,
-    }
-
-    graph = build_agent_graph(settings=settings, llm=llm)
-    return graph.invoke(initial_state)
+    result = graph.invoke(state)
+    return {"summary": result.get("summary", "")}
 
 
 

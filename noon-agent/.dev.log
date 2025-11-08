@@ -1,0 +1,29 @@
+/Library/Frameworks/Python.framework/Versions/3.13/lib/python3.13/site-packages/langsmith/client.py:292: LangSmithMissingAPIKeyWarning: API key must be provided when using hosted LangSmith API
+  warnings.warn(
+INFO:langgraph_api.cli:
+
+        Welcome to
+
+╦  ┌─┐┌┐┌┌─┐╔═╗┬─┐┌─┐┌─┐┬ ┬
+║  ├─┤││││ ┬║ ╦├┬┘├─┤├─┘├─┤
+╩═╝┴ ┴┘└┘└─┘╚═╝┴└─┴ ┴┴  ┴ ┴
+
+- 🚀 API: [36mhttp://127.0.0.1:2024[0m
+- 🎨 Studio UI: [36mhttps://smith.langchain.com/studio/?baseUrl=http://127.0.0.1:2024[0m
+- 📚 API Docs: [36mhttp://127.0.0.1:2024/docs[0m
+
+This in-memory server is designed for development and testing.
+For production use, please use LangSmith Deployment.
+
+
+[2m2025-11-08T20:03:43.109540Z[0m [[33m[1mwarning  [0m] [1mFailed to get info from https://api.smith.langchain.com: LangSmithError('Failed to GET /info in LangSmith API. maximum recursion depth exceeded\n')[0m [[0m[1m[34mlangsmith.client[0m][0m [36mapi_variant[0m=[35mlocal_dev[0m [36mlanggraph_api_version[0m=[35m0.4.48[0m [36mthread_name[0m=[35m'Thread-2 (tracing_control_thread_func)'[0m
+[2m2025-11-08T20:03:43.175101Z[0m [[32m[1minfo     [0m] [1mUsing langgraph_runtime_inmem [0m [[0m[1m[34mlanggraph_runtime[0m][0m [36mapi_variant[0m=[35mlocal_dev[0m [36mlanggraph_api_version[0m=[35m0.4.48[0m [36mthread_name[0m=[35mMainThread[0m
+[2m2025-11-08T20:03:43.180644Z[0m [[32m[1minfo     [0m] [1mUsing auth of type=noop       [0m [[0m[1m[34mlanggraph_api.auth.middleware[0m][0m [36mapi_variant[0m=[35mlocal_dev[0m [36mlanggraph_api_version[0m=[35m0.4.48[0m [36mthread_name[0m=[35mMainThread[0m
+[2m2025-11-08T20:03:43.182567Z[0m [[32m[1minfo     [0m] [1mStarting In-Memory runtime with langgraph-api=0.4.48 and in-memory runtime=0.14.1[0m [[0m[1m[34mlanggraph_runtime_inmem.lifespan[0m][0m [36mapi_variant[0m=[35mlocal_dev[0m [36mlanggraph_api_version[0m=[35m0.4.48[0m [36mlanggraph_runtime_inmem_version[0m=[35m0.14.1[0m [36mthread_name[0m=[35masyncio_0[0m [36mversion[0m=[35m0.4.48[0m
+[2m2025-11-08T20:03:43.200811Z[0m [[32m[1minfo     [0m] [1mStarting thread TTL sweeper with interval 5 minutes[0m [[0m[1m[34mlanggraph_api.thread_ttl[0m][0m [36mapi_variant[0m=[35mlocal_dev[0m [36minterval_minutes[0m=[35m5[0m [36mlanggraph_api_version[0m=[35m0.4.48[0m [36mstrategy[0m=[35mdelete[0m [36mthread_name[0m=[35masyncio_1[0m
+[2m2025-11-08T20:03:43.210469Z[0m [[32m[1minfo     [0m] [1mRegistering graph with id 'noon-agent'[0m [[0m[1m[34mlanggraph_api.graph[0m][0m [36mapi_variant[0m=[35mlocal_dev[0m [36mgraph_id[0m=[35mnoon-agent[0m [36mlanggraph_api_version[0m=[35m0.4.48[0m [36mthread_name[0m=[35masyncio_1[0m
+[2m2025-11-08T20:03:43.236612Z[0m [[32m[1minfo     [0m] [1mStarting 1 background workers [0m [[0m[1m[34mlanggraph_runtime_inmem.queue[0m][0m [36mapi_variant[0m=[35mlocal_dev[0m [36mlanggraph_api_version[0m=[35m0.4.48[0m [36mthread_name[0m=[35masyncio_0[0m
+[2m2025-11-08T20:03:43.236899Z[0m [[31m[1merror    [0m] [1m[Errno 48] error while attempting to bind on address ('127.0.0.1', 2024): [errno 48] address already in use[0m [[0m[1m[34muvicorn.error[0m][0m [36mapi_variant[0m=[35mlocal_dev[0m [36mlanggraph_api_version[0m=[35m0.4.48[0m [36mthread_name[0m=[35mMainThread[0m
+[2m2025-11-08T20:03:43.258587Z[0m [[32m[1minfo     [0m] [1mWorker stats                  [0m [[0m[1m[34mlanggraph_runtime_inmem.queue[0m][0m [36mactive[0m=[35m0[0m [36mapi_variant[0m=[35mlocal_dev[0m [36mavailable[0m=[35m1[0m [36mlanggraph_api_version[0m=[35m0.4.48[0m [36mmax[0m=[35m1[0m [36mthread_name[0m=[35masyncio_1[0m
+[2m2025-11-08T20:03:43.258798Z[0m [[32m[1minfo     [0m] [1mShutting down background workers[0m [[0m[1m[34mlanggraph_runtime_inmem.queue[0m][0m [36mapi_variant[0m=[35mlocal_dev[0m [36mlanggraph_api_version[0m=[35m0.4.48[0m [36mthread_name[0m=[35mMainThread[0m
+[2m2025-11-08T20:03:43.258975Z[0m [[32m[1minfo     [0m] [1mShutting down remote graphs   [0m [[0m[1m[34mlanggraph_api.graph[0m][0m [36mapi_variant[0m=[35mlocal_dev[0m [36mlanggraph_api_version[0m=[35m0.4.48[0m [36mthread_name[0m=[35mMainThread[0m
