@@ -2,9 +2,9 @@ from __future__ import annotations
 
 from fastapi import APIRouter, Depends, HTTPException, Response, status
 
-from ..dependencies import AuthenticatedUser, get_current_user
-from ..schemas import google_accounts as schema
-from ..services import supabase_client
+from dependencies import AuthenticatedUser, get_current_user
+from schemas import google_accounts as schema
+from services import supabase_client
 
 router = APIRouter(prefix="/google-accounts", tags=["google_accounts"])
 

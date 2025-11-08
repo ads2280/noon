@@ -1,6 +1,6 @@
 from fastapi import FastAPI
 
-from .routers import auth, google_accounts
+from routers import auth, google_accounts
 
 
 def create_app() -> FastAPI:

@@ -6,7 +6,7 @@ import jwt
 from fastapi import Depends, Header, HTTPException, status
 from pydantic import BaseModel
 
-from .config import get_settings
+from config import get_settings
 
 
 class AuthenticatedUser(BaseModel):

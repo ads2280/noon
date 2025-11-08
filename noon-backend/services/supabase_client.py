@@ -6,7 +6,7 @@ from typing import Any, Dict, List, Optional, Tuple
 from postgrest import APIError
 from supabase import Client, create_client
 
-from ..config import get_settings
+from config import get_settings
 
 
 class SupabaseAuthError(RuntimeError):

@@ -2,8 +2,8 @@ from __future__ import annotations
 
 from fastapi import APIRouter, HTTPException, status
 
-from ..schemas import auth as auth_schema
-from ..services import supabase_client
+from schemas import auth as auth_schema
+from services import supabase_client
 
 router = APIRouter(prefix="/auth", tags=["auth"])
 
