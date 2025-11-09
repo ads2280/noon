@@ -75,7 +75,7 @@ def run_agent(payload: AgentRunRequest) -> Dict[str, Any]:
             stream_mode=payload.stream_mode,
         )
 
-        event = []
+        events = []
         for chunk in stream:
             events.append({"event": chunk.event, "data": chunk.data})
 
