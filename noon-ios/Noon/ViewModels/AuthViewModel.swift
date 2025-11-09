@@ -10,11 +10,21 @@ import Combine
 import os
 
 @MainActor
+protocol AuthSessionProviding: AnyObject {
+    var session: OTPSession? { get }
+    func refreshSession() async throws -> StoredAuthSession
+}
+
+@MainActor
 final class AuthViewModel: ObservableObject {
     enum Phase {
         case enterPhone
         case enterCode
         case authenticated
+    }
+
+    enum SessionError: Error {
+        case missingRefreshToken
     }
 
     private let logger = Logger(subsystem: "com.noon.app", category: "AuthViewModel")
@@ -26,6 +36,7 @@ final class AuthViewModel: ObservableObject {
     @Published private(set) var errorMessage: String?
     @Published private(set) var session: OTPSession?
     @Published private(set) var user: UserProfile?
+    @Published private(set) var storedSession: StoredAuthSession?
 
     private let authService: AuthServicing
     private let persistence: AuthPersistence
@@ -37,6 +48,7 @@ final class AuthViewModel: ObservableObject {
         if let stored = self.persistence.loadSession() {
             self.session = stored.session
             self.user = stored.user
+            self.storedSession = stored
             self.phase = .authenticated
             logger.debug("🔁 Restored persisted session for user \(stored.user.id, privacy: .private)")
         }
@@ -72,13 +84,26 @@ final class AuthViewModel: ObservableObject {
         logger.debug("🔐 Verifying OTP for phone \(normalizedPhone, privacy: .private)")
         await perform {
             let response = try await self.authService.verifyOTP(phone: normalizedPhone, code: trimmedCode)
-            self.session = response.session
-            self.user = response.user
-            self.persistence.save(response)
+            self.storeSession(response)
             self.phase = .authenticated
             self.errorMessage = nil
             self.logger.debug("🎉 OTP verification succeeded for user \(response.user.id, privacy: .private)")
         }
+    }
+
+    func refreshSession() async throws -> StoredAuthSession {
+        guard let refreshToken = self.session?.refreshToken ?? self.storedSession?.session.refreshToken else {
+            logger.error("❌ Attempted to refresh session without a refresh token")
+            throw SessionError.missingRefreshToken
+        }
+
+        let currentUserID = self.user?.id ?? "<unknown>"
+        logger.debug("🔄 Refreshing auth session for user \(currentUserID, privacy: .private)")
+        let response = try await self.authService.refreshSession(refreshToken: refreshToken)
+        self.storeSession(response)
+        self.phase = .authenticated
+        logger.debug("✅ Successfully refreshed auth session for user \(response.user.id, privacy: .private)")
+        return StoredAuthSession(session: response.session, user: response.user)
     }
 
     func signOut() {
@@ -87,6 +112,7 @@ final class AuthViewModel: ObservableObject {
         self.otpCode = ""
         self.session = nil
         self.user = nil
+        self.storedSession = nil
         self.phase = .enterPhone
         self.persistence.clear()
     }
@@ -142,6 +168,14 @@ private extension AuthViewModel {
             logger.error("❌ Unexpected error during auth flow: \(String(describing: error))")
         }
     }
+
+    func storeSession(_ response: OTPVerifyResponse) {
+        let stored = StoredAuthSession(session: response.session, user: response.user)
+        self.session = response.session
+        self.user = response.user
+        self.storedSession = stored
+        self.persistence.save(response)
+    }
 }
 
 // MARK: - Persistence
@@ -189,4 +223,6 @@ final class AuthPersistence {
         self.userDefaults.removeObject(forKey: sessionKey)
     }
 }
+
+extension AuthViewModel: AuthSessionProviding {}
 

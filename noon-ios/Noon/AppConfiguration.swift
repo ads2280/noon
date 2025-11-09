@@ -18,12 +18,11 @@ enum AppConfiguration {
 
     /// Full OAuth callback URL (e.g. noon://oauth/google).
     static var googleOAuthCallbackURL: URL {
-        if let string = infoValue(for: "GoogleOAuthCallbackURL") ?? environmentValue(for: "GOOGLE_OAUTH_CALLBACK_URL"),
-           let url = URL(string: string) {
-            return url
+        guard let string = infoValue(for: "GoogleOAuthCallbackURL") ?? environmentValue(for: "GOOGLE_OAUTH_CALLBACK_URL"),
+              let url = URL(string: string) else {
+            fatalError("GoogleOAuthCallbackURL must be set in Info.plist or GOOGLE_OAUTH_CALLBACK_URL environment variable")
         }
-        NSLog("⚠️ Missing GoogleOAuthCallbackURL in Info.plist or environment. Falling back to noon://oauth/google.")
-        return URL(string: "noon://oauth/google")!
+        return url
     }
 
     /// Callback URL scheme used by ASWebAuthenticationSession.

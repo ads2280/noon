@@ -48,6 +48,7 @@ enum AuthServiceError: Error {
 protocol AuthServicing {
     func requestOTP(phone: String) async throws -> OTPInitResponse
     func verifyOTP(phone: String, code: String) async throws -> OTPVerifyResponse
+    func refreshSession(refreshToken: String) async throws -> OTPVerifyResponse
 }
 
 final class AuthService: AuthServicing {
@@ -66,6 +67,11 @@ final class AuthService: AuthServicing {
 
     func verifyOTP(phone: String, code: String) async throws -> OTPVerifyResponse {
         let request = try makeRequest(path: "/auth/verify", payload: ["phone": phone, "code": code])
+        return try await perform(request, decoding: OTPVerifyResponse.self)
+    }
+
+    func refreshSession(refreshToken: String) async throws -> OTPVerifyResponse {
+        let request = try makeRequest(path: "/auth/refresh", payload: ["refresh_token": refreshToken])
         return try await perform(request, decoding: OTPVerifyResponse.self)
     }
 }

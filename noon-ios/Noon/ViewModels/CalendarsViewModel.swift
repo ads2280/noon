@@ -19,15 +19,24 @@ final class CalendarsViewModel: ObservableObject {
     @Published private(set) var deletingAccountIDs: Set<String> = []
     @Published private(set) var deletionError: String?
 
-    private let accessToken: String
     private let calendarService: CalendarServicing
     private let callbackScheme: String
     private var hasLoaded: Bool = false
+    private let sessionProvider: AuthSessionProviding?
+    private let storedSession: OTPSession?
 
     init(session: OTPSession, calendarService: CalendarServicing? = nil, callbackScheme: String? = nil) {
-        self.accessToken = session.accessToken
         self.calendarService = calendarService ?? CalendarService()
         self.callbackScheme = callbackScheme ?? AppConfiguration.googleOAuthCallbackScheme
+        self.sessionProvider = nil
+        self.storedSession = session
+    }
+
+    init(sessionProvider: AuthSessionProviding, calendarService: CalendarServicing? = nil, callbackScheme: String? = nil) {
+        self.calendarService = calendarService ?? CalendarService()
+        self.callbackScheme = callbackScheme ?? AppConfiguration.googleOAuthCallbackScheme
+        self.sessionProvider = sessionProvider
+        self.storedSession = sessionProvider.session
     }
 
     func loadCalendars(force: Bool = false) async {
@@ -38,6 +47,11 @@ final class CalendarsViewModel: ObservableObject {
 
         isLoading = true
         defer { isLoading = false }
+
+        guard let accessToken = currentAccessToken() else {
+            errorMessage = "We couldn't load your calendars because your session is unavailable."
+            return
+        }
 
         do {
             let fetched = try await calendarService.fetchCalendars(accessToken: accessToken)
@@ -62,6 +76,12 @@ final class CalendarsViewModel: ObservableObject {
         isLinking = true
         linkingError = nil
         linkingMessage = nil
+
+        guard let accessToken = currentAccessToken() else {
+            linkingError = "You're signed out. Please sign in again."
+            isLinking = false
+            return
+        }
 
         do {
             let start = try await calendarService.beginGoogleOAuth(accessToken: accessToken)
@@ -118,6 +138,11 @@ final class CalendarsViewModel: ObservableObject {
 
         deletingAccountIDs.insert(account.id)
         defer { deletingAccountIDs.remove(account.id) }
+
+        guard let accessToken = currentAccessToken() else {
+            deletionError = "You're signed out. Please sign in again."
+            return
+        }
 
         do {
             try await calendarService.deleteCalendar(accessToken: accessToken, accountId: account.id)
@@ -182,6 +207,16 @@ final class CalendarsViewModel: ObservableObject {
         }
 
         throw CalendarLinkError.missingResult
+    }
+}
+
+private extension CalendarsViewModel {
+    func currentAccessToken() -> String? {
+        if let provider = sessionProvider, let session = provider.session {
+            return session.accessToken
+        }
+
+        return storedSession?.accessToken
     }
 }
 

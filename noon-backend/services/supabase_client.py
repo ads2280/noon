@@ -67,6 +67,22 @@ def verify_phone_otp(phone: str, token: str) -> Tuple[Dict[str, Any], Dict[str, 
     return session, user
 
 
+def refresh_session(refresh_token: str) -> Tuple[Dict[str, Any], Dict[str, Any]]:
+    client = get_service_client()
+    try:
+        response = client.auth.refresh_session(refresh_token)
+    except Exception as exc:  # pragma: no cover - supabase raises dynamic errors
+        raise SupabaseAuthError(str(exc)) from exc
+
+    session = _model_dump(getattr(response, "session", None))
+    user = _model_dump(getattr(response, "user", None))
+
+    if not session or not user:
+        raise SupabaseAuthError("Supabase did not return a valid session or user.")
+
+    return session, user
+
+
 def ensure_user_profile(user: Dict[str, Any], phone: str) -> Dict[str, Any]:
     client = get_service_client()
     payload = {

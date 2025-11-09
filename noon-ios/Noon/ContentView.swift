@@ -86,8 +86,8 @@ struct ContentView: View {
             .navigationDestination(for: Destination.self) { destination in
                 switch destination {
                 case .calendars:
-                    if let session = viewModel.session {
-                        CalendarsView(session: session)
+                    if viewModel.session != nil {
+                        CalendarsView(authViewModel: viewModel)
                     } else {
                         calendarsUnavailableFallback
                     }

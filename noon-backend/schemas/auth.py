@@ -33,3 +33,7 @@ class OTPSession(BaseModel):
 class OTPVerifyResponse(BaseModel):
     session: OTPSession
     user: UserProfile
+
+
+class SessionRefreshRequest(BaseModel):
+    refresh_token: str = Field(..., min_length=10, max_length=1024)

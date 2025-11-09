@@ -50,3 +50,28 @@ async def verify_otp(
         ),
         user=auth_schema.UserProfile(id=user.get("id"), phone=user.get("phone")),
     )
+
+
+@router.post("/refresh", response_model=auth_schema.OTPVerifyResponse)
+async def refresh_session(
+    payload: auth_schema.SessionRefreshRequest,
+) -> auth_schema.OTPVerifyResponse:
+    try:
+        session, user = supabase_client.refresh_session(payload.refresh_token)
+    except supabase_client.SupabaseAuthError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED, detail=str(exc)
+        ) from exc
+
+    return auth_schema.OTPVerifyResponse(
+        session=auth_schema.OTPSession(
+            access_token=session.get("access_token"),
+            refresh_token=session.get("refresh_token"),
+            token_type=session.get("token_type", "bearer"),
+            expires_in=session.get("expires_in"),
+        ),
+        user=auth_schema.UserProfile(
+            id=user.get("id"),
+            phone=user.get("phone"),
+        ),
+    )

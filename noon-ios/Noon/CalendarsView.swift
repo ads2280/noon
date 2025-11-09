@@ -11,10 +11,14 @@ struct CalendarsView: View {
     @StateObject private var viewModel: CalendarsViewModel
     @StateObject private var coordinator = CalendarLinkCoordinator()
 
-    init(session: OTPSession, calendarService: CalendarServicing? = nil) {
+    init(authViewModel: AuthViewModel, calendarService: CalendarServicing? = nil) {
+        self.init(sessionProvider: authViewModel, calendarService: calendarService)
+    }
+
+    init(sessionProvider: AuthSessionProviding, calendarService: CalendarServicing? = nil) {
         _viewModel = StateObject(
             wrappedValue: CalendarsViewModel(
-                session: session,
+                sessionProvider: sessionProvider,
                 calendarService: calendarService
             )
         )
@@ -96,7 +100,7 @@ private extension CalendarsView {
                         .imageScale(.medium)
                         .font(.system(size: 16, weight: .semibold))
                 }
-                Text(viewModel.isLinking ? "Connecting…" : "Connect another account")
+                Text(viewModel.isLinking ? "Connecting…" : "Connect account")
                     .font(.callout.weight(.semibold))
             }
             .padding(.vertical, 10)
@@ -240,14 +244,15 @@ private extension CalendarsView {
 }
 
 #Preview {
-    let session = OTPSession(accessToken: "token", refreshToken: nil, tokenType: "bearer", expiresIn: nil)
+    let session = OTPSession(accessToken: "token", refreshToken: "refresh", tokenType: "bearer", expiresIn: 3600)
+    let user = UserProfile(id: UUID().uuidString, phone: "+15551234567")
+    let sessionProvider = MockSessionProvider(stored: StoredAuthSession(session: session, user: user))
     return NavigationStack {
-        CalendarsView(session: session, calendarService: MockCalendarService())
+        CalendarsView(sessionProvider: sessionProvider, calendarService: MockCalendarService())
     }
     .preferredColorScheme(.dark)
 }
 
-@MainActor
 private final class MockCalendarService: CalendarServicing {
     private var accounts: [GoogleAccount]
 
@@ -290,6 +295,22 @@ private final class MockCalendarService: CalendarServicing {
 
     func deleteCalendar(accessToken: String, accountId: String) async throws {
         accounts.removeAll { $0.id == accountId }
+    }
+}
+
+private final class MockSessionProvider: AuthSessionProviding {
+    var session: OTPSession? {
+        stored.session
+    }
+
+    private let stored: StoredAuthSession
+
+    init(stored: StoredAuthSession) {
+        self.stored = stored
+    }
+
+    func refreshSession() async throws -> StoredAuthSession {
+        throw AuthViewModel.SessionError.missingRefreshToken
     }
 }
 
