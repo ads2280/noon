@@ -47,7 +47,7 @@ def mock_google_account():
             "refresh_token": "test-refresh-token",
             "expires_at": "2024-12-31T23:59:59Z",
             "token_type": "Bearer",
-        }
+        },
     }
 
 
@@ -69,13 +69,15 @@ def mock_get_current_user(mock_authenticated_user):
 def mock_list_google_accounts():
     """Mock list_google_accounts function."""
     with patch("agent.routes.agent.supabase_client.list_google_accounts") as mock:
-        mock.return_value = [{
-            "id": "google-account-123",
-            "email": "test@example.com",
-            "access_token": "ya29.test-access-token",
-            "refresh_token": "test-refresh-token",
-            "expires_at": "2024-12-31T23:59:59Z",
-        }]
+        mock.return_value = [
+            {
+                "id": "google-account-123",
+                "email": "test@example.com",
+                "access_token": "ya29.test-access-token",
+                "refresh_token": "test-refresh-token",
+                "expires_at": "2024-12-31T23:59:59Z",
+            }
+        ]
         yield mock
 
 
@@ -83,8 +85,10 @@ def mock_list_google_accounts():
 def mock_transcription_service():
     """Mock transcription service."""
     with patch("agent.routes.agent.transcription_service.transcribe") as mock:
+
         async def mock_transcribe(*args, **kwargs):
             return "What am I doing next weekend?"
+
         mock.side_effect = mock_transcribe
         yield mock
 
@@ -101,10 +105,7 @@ def mock_langgraph_client():
             return {
                 "success": True,
                 "request": "show-schedule",
-                "metadata": {
-                    "start-date": "2024-11-16",
-                    "end-date": "2024-11-17"
-                }
+                "metadata": {"start-date": "2024-11-16", "end-date": "2024-11-17"},
             }
 
         mock_runs.wait = AsyncMock(side_effect=mock_wait)

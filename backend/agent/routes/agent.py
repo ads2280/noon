@@ -35,12 +35,12 @@ async def agent_action(
         if not accounts:
             raise HTTPException(
                 status_code=400,
-                detail="No Google account linked. Please connect a Google account first."
+                detail="No Google account linked. Please connect a Google account first.",
             )
-        
+
         # Choose first account
         google_account = accounts[0]
-        
+
         # Prepare auth data with Google tokens
         # The agent expects tokens in a nested structure
         auth = {
@@ -49,46 +49,40 @@ async def agent_action(
                 "access_token": google_account.get("access_token"),
                 "refresh_token": google_account.get("refresh_token"),
                 "expires_at": google_account.get("expires_at"),
-            }
+            },
         }
 
         # Validate file
         if not file or not file.filename:
-            raise HTTPException(
-                status_code=400,
-                detail="No file provided"
-            )
+            raise HTTPException(status_code=400, detail="No file provided")
 
         # Transcribe audio file
-        logger.info(f"Transcribing audio file: {file.filename} for user {current_user.id}")
+        logger.info(
+            f"Transcribing audio file: {file.filename} for user {current_user.id}"
+        )
         try:
             # Reset file pointer to beginning in case it was read already
             await file.seek(0)
             transcribed_text = await transcription_service.transcribe(
-                file=file.file,
-                filename=file.filename,
-                mime_type=file.content_type
+                file=file.file, filename=file.filename, mime_type=file.content_type
             )
         except ValueError as e:
             raise HTTPException(
-                status_code=400,
-                detail=f"Transcription error: {str(e)}"
+                status_code=400, detail=f"Transcription error: {str(e)}"
             )
         except Exception as e:
             logger.error(f"Transcription failed: {e}", exc_info=True)
             raise HTTPException(
-                status_code=500,
-                detail=f"Failed to transcribe audio: {str(e)}"
+                status_code=500, detail=f"Failed to transcribe audio: {str(e)}"
             )
 
         if not transcribed_text or not transcribed_text.strip():
             raise HTTPException(
                 status_code=400,
-                detail="Transcription resulted in empty text. Please ensure the audio file contains speech."
+                detail="Transcription resulted in empty text. Please ensure the audio file contains speech.",
             )
 
         logger.info(f"Transcription completed: {transcribed_text[:100]}...")
-
 
         # Create LangGraph SDK client and invoke agent
         settings = get_settings()
@@ -99,10 +93,12 @@ async def agent_action(
             "auth": auth,
             "success": False,
             "request": "no-action",
-            "metadata": {}
+            "metadata": {},
         }
 
-        logger.info(f"Invoking agent for user {current_user.id} with transcribed query: {transcribed_text[:50]}...")
+        logger.info(
+            f"Invoking agent for user {current_user.id} with transcribed query: {transcribed_text[:50]}..."
+        )
 
         # Invoke and wait for completion
         result = await client.runs.wait(
@@ -111,19 +107,18 @@ async def agent_action(
             input=input_state,
         )
 
-        logger.info(f"Agent completed. Request: {result.get('request')}, Success: {result.get('success')}")
+        logger.info(
+            f"Agent completed. Request: {result.get('request')}, Success: {result.get('success')}"
+        )
 
         return {
             "success": result.get("success", False),
             "request": result.get("request", "no-action"),
-            "metadata": result.get("metadata", {})
+            "metadata": result.get("metadata", {}),
         }
 
     except HTTPException:
         raise
     except Exception as e:
         logger.error(f"Agent invocation failed: {e}", exc_info=True)
-        raise HTTPException(
-            status_code=500,
-            detail=f"Failed to invoke agent: {str(e)}"
-        )
+        raise HTTPException(status_code=500, detail=f"Failed to invoke agent: {str(e)}")

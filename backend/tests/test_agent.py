@@ -23,9 +23,7 @@ class TestAgentAction:
 
         # Act
         response = test_client.post(
-            "/agent/action",
-            files={"file": audio_file},
-            headers=auth_headers
+            "/agent/action", files={"file": audio_file}, headers=auth_headers
         )
 
         # Assert
@@ -57,14 +55,14 @@ class TestAgentAction:
         # Arrange
         audio_file = ("test.wav", BytesIO(b"fake audio data"), "audio/wav")
 
-        with patch("agent.routes.agent.supabase_client.list_google_accounts") as mock_list:
+        with patch(
+            "agent.routes.agent.supabase_client.list_google_accounts"
+        ) as mock_list:
             mock_list.return_value = []
 
             # Act
             response = test_client.post(
-                "/agent/action",
-                files={"file": audio_file},
-                headers=auth_headers
+                "/agent/action", files={"file": audio_file}, headers=auth_headers
             )
 
         # Assert
@@ -82,16 +80,18 @@ class TestAgentAction:
         # Arrange
         audio_file = ("test.wav", BytesIO(b"fake audio data"), "audio/wav")
 
-        with patch("agent.routes.agent.transcription_service.transcribe") as mock_transcribe:
+        with patch(
+            "agent.routes.agent.transcription_service.transcribe"
+        ) as mock_transcribe:
+
             async def fail_transcribe(*args, **kwargs):
                 raise Exception("Transcription service unavailable")
+
             mock_transcribe.side_effect = fail_transcribe
 
             # Act
             response = test_client.post(
-                "/agent/action",
-                files={"file": audio_file},
-                headers=auth_headers
+                "/agent/action", files={"file": audio_file}, headers=auth_headers
             )
 
         # Assert
@@ -134,16 +134,18 @@ class TestAgentAction:
         # Arrange
         audio_file = ("test.wav", BytesIO(b"fake audio data"), "audio/wav")
 
-        with patch("agent.routes.agent.transcription_service.transcribe") as mock_transcribe:
+        with patch(
+            "agent.routes.agent.transcription_service.transcribe"
+        ) as mock_transcribe:
+
             async def empty_transcribe(*args, **kwargs):
                 return ""
+
             mock_transcribe.side_effect = empty_transcribe
 
             # Act
             response = test_client.post(
-                "/agent/action",
-                files={"file": audio_file},
-                headers=auth_headers
+                "/agent/action", files={"file": audio_file}, headers=auth_headers
             )
 
         # Assert

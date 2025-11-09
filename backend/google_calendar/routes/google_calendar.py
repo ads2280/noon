@@ -98,7 +98,7 @@ async def get_event(
 ) -> Dict[str, Any]:
     """
     Get a single event from a Google Calendar.
-    
+
     Uses the calendar wrapper service with OAuth credentials from the user's Google account.
     """
     try:
@@ -185,4 +185,3 @@ async def get_event(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"Unexpected error: {str(exc)}",
         ) from exc
-

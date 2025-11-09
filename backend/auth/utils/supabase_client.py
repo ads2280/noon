@@ -192,7 +192,7 @@ async def get_google_account(user_id: str) -> Dict[str, Any] | None:
             "refresh_token": account.get("refresh_token"),
             "expires_at": account.get("expires_at"),
             "token_type": account.get("metadata", {}).get("token_type", "Bearer"),
-        }
+        },
     }
 
 

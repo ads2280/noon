@@ -23,7 +23,7 @@ logger = logging.getLogger(__name__)
 class TranscriptionService:
     """
     Service for transcribing audio files using Deepgram's prerecorded API.
-    
+
     Example usage:
         service = TranscriptionService()
         text = await service.transcribe("path/to/audio.wav", vocabulary="term1,term2")
@@ -39,7 +39,7 @@ class TranscriptionService:
     ):
         """
         Initialize the transcription service.
-        
+
         Args:
             api_key: Deepgram API key. If not provided, will use DEEPGRAM_API_KEY env var.
             model: Deepgram model to use (default: "nova-3")
@@ -113,7 +113,7 @@ class TranscriptionService:
     ) -> str:
         """
         Transcribe an audio file using Deepgram's prerecorded API.
-        
+
         Args:
             file: Audio file as:
                 - File path (str or Path)
@@ -122,10 +122,10 @@ class TranscriptionService:
             vocabulary: Optional comma-separated custom vocabulary terms
             filename: Optional filename (used for MIME type detection if file is bytes or BinaryIO)
             mime_type: Optional MIME type (overrides auto-detection)
-            
+
         Returns:
             Transcribed text as string
-            
+
         Raises:
             ValueError: If API key is not configured or file is empty
             httpx.HTTPStatusError: If Deepgram API returns an error
@@ -138,7 +138,7 @@ class TranscriptionService:
         # Read audio bytes from various input types
         audio_bytes: bytes
         actual_filename: str
-        
+
         if isinstance(file, (str, Path)):
             # File path
             file_path = Path(file)
