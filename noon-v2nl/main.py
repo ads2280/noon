@@ -211,6 +211,7 @@ async def websocket_transcribe(websocket: WebSocket):
     buffered_chunks: List[bytes] = []
     dg_ws = None
     final_text = ""
+    final_segments: List[str] = []
     partial_text_last_sent = ""
     upstream_closed = False
     
@@ -250,7 +251,7 @@ async def websocket_transcribe(websocket: WebSocket):
     # Forwarding functions are defined within the Deepgram connection block below
     
     async def forward_deepgram_to_client():
-        nonlocal final_text, partial_text_last_sent, dg_ws
+        nonlocal final_text, final_segments, partial_text_last_sent, dg_ws
         try:
             async for message in dg_ws:
                 # aiohttp returns WSMessage objects
@@ -275,7 +276,10 @@ async def websocket_transcribe(websocket: WebSocket):
                                 "text": transcript
                             })
                         if payload.get("is_final"):
+                            final_segments.append(transcript)
                             final_text = transcript
+                            # reset partial after finalizing a segment to avoid duplication
+                            partial_text_last_sent = ""
                 elif message.type in (aiohttp.WSMsgType.CLOSE, aiohttp.WSMsgType.CLOSED, aiohttp.WSMsgType.ERROR):
                     break
         except Exception as e:
@@ -314,6 +318,8 @@ async def websocket_transcribe(websocket: WebSocket):
                                 if action == "transcribe":
                                     await _send_close_stream()
                                     upstream_closed = True
+                                    # End-of-stream signaled by client; stop reading further
+                                    break
                                 elif action == "start":
                                     pass
                                 elif action == "reset":
@@ -330,12 +336,13 @@ async def websocket_transcribe(websocket: WebSocket):
                 from_dg = asyncio.create_task(forward_deepgram_to_client())
                 await to_dg
                 try:
-                    await asyncio.wait_for(from_dg, timeout=10.0)
+                    await asyncio.wait_for(from_dg, timeout=30.0)
                 except asyncio.TimeoutError:
                     pass
+                combined_text = " ".join(s.strip() for s in final_segments if s.strip()).strip()
                 await websocket.send_json({
                     "type": "transcription_complete",
-                    "text": final_text or partial_text_last_sent
+                    "text": combined_text or final_text or partial_text_last_sent
                 })
     except Exception as e:
         logger.error(f"Deepgram live websocket error: {e}", exc_info=True)
