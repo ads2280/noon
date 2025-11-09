@@ -44,18 +44,18 @@ final class AuthViewModel: ObservableObject {
 
     func requestOTP() async {
         let trimmed = self.phoneNumber.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard trimmed.isEmpty == false else {
+        guard let normalized = normalizePhoneNumber(trimmed) else {
             self.errorMessage = "Enter a valid phone number."
-            logger.error("❌ Attempted to request OTP with empty phone number")
+            logger.error("❌ Attempted to request OTP with invalid phone number")
             return
         }
 
-        logger.debug("📨 Requesting OTP for phone \(trimmed, privacy: .private)")
+        logger.debug("📨 Requesting OTP for phone \(normalized, privacy: .private)")
         await perform {
-            _ = try await self.authService.requestOTP(phone: trimmed)
+            _ = try await self.authService.requestOTP(phone: normalized)
             self.phase = .enterCode
             self.errorMessage = nil
-            self.logger.debug("✅ OTP requested successfully for phone \(trimmed, privacy: .private)")
+            self.logger.debug("✅ OTP requested successfully for phone \(normalized, privacy: .private)")
         }
     }
 
@@ -67,9 +67,11 @@ final class AuthViewModel: ObservableObject {
             return
         }
 
-        logger.debug("🔐 Verifying OTP for phone \(self.phoneNumber, privacy: .private)")
+        let normalizedPhone = normalizePhoneNumber(self.phoneNumber) ?? self.phoneNumber
+
+        logger.debug("🔐 Verifying OTP for phone \(normalizedPhone, privacy: .private)")
         await perform {
-            let response = try await self.authService.verifyOTP(phone: self.phoneNumber, code: trimmedCode)
+            let response = try await self.authService.verifyOTP(phone: normalizedPhone, code: trimmedCode)
             self.session = response.session
             self.user = response.user
             self.persistence.save(response)
@@ -95,6 +97,25 @@ final class AuthViewModel: ObservableObject {
 }
 
 private extension AuthViewModel {
+    func normalizePhoneNumber(_ input: String) -> String? {
+        let digits = input.filter(\.isNumber)
+        guard digits.isEmpty == false else { return nil }
+
+        if digits.count == 10 {
+            return "+1\(digits)"
+        }
+
+        if digits.count == 11, digits.first == "1" {
+            return "+\(digits)"
+        }
+
+        if input.hasPrefix("+"), digits.count >= 10 {
+            return "+\(digits)"
+        }
+
+        return nil
+    }
+
     func perform(_ work: @escaping () async throws -> Void) async {
         self.isLoading = true
         defer { self.isLoading = false }

@@ -100,9 +100,9 @@ struct ContentView: View {
         VStack(spacing: 32) {
             Spacer()
 
-            Text("Welcome to Noon")
-                .font(.system(size: 42, weight: .bold, design: .rounded))
-                .foregroundStyle(ColorPalette.Text.primary)
+            Text("Noon")
+                .font(.system(size: 52, weight: .bold, design: .rounded))
+                .foregroundStyle(ColorPalette.Gradients.primary)
                 .multilineTextAlignment(.center)
                 .padding(.horizontal, 24)
 
@@ -111,7 +111,15 @@ struct ContentView: View {
                     .font(.headline)
                     .foregroundStyle(ColorPalette.Text.secondary)
 
-                TextField("+1 555 123 4567", text: $viewModel.phoneNumber)
+                TextField(
+                    "555 123 4567",
+                    text: Binding(
+                        get: { viewModel.phoneNumber },
+                        set: { newValue in
+                            viewModel.phoneNumber = PhoneNumberFormatter.formatDisplay(from: newValue)
+                        }
+                    )
+                )
                     .keyboardType(.phonePad)
                     .textContentType(.telephoneNumber)
                     .padding()
@@ -258,5 +266,52 @@ struct ContentView: View {
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .background(ColorPalette.Surface.background.ignoresSafeArea())
+    }
+}
+
+private enum PhoneNumberFormatter {
+    static func formatDisplay(from input: String) -> String {
+        let digitsOnly = input.filter(\.isNumber)
+
+        guard digitsOnly.isEmpty == false else { return "" }
+
+        var digits = digitsOnly
+
+        if digits.count >= 11, digits.hasPrefix("1") {
+            digits = String(digits.dropFirst())
+        }
+
+        if digits.count > 10 {
+            digits = String(digits.prefix(10))
+        }
+
+        let area = String(digits.prefix(3))
+        let middle = String(digits.dropFirst(min(3, digits.count)).prefix(3))
+        let last = String(digits.dropFirst(min(6, digits.count)))
+
+        var formatted = ""
+
+        if area.isEmpty == false {
+            formatted += "(\(area)"
+            if area.count == 3 {
+                formatted += ")"
+                if digits.count > 3 {
+                    formatted += " "
+                }
+            }
+        }
+
+        if middle.isEmpty == false {
+            formatted += middle
+            if middle.count == 3, last.isEmpty == false {
+                formatted += " - "
+            }
+        }
+
+        if last.isEmpty == false {
+            formatted += last
+        }
+
+        return formatted
     }
 }

@@ -80,14 +80,27 @@ extension CalendarLinkCoordinator: ASWebAuthenticationPresentationContextProvidi
 
 private extension CalendarLinkCoordinator {
     static func defaultPresentationAnchor() -> ASPresentationAnchor {
-        guard
-            let windowScene = UIApplication.shared.connectedScenes
-                .first(where: { $0.activationState == .foregroundActive }) as? UIWindowScene,
-            let window = windowScene.windows.first(where: { $0.isKeyWindow })
-        else {
-            return UIWindow(frame: .zero)
+        let scenes = UIApplication.shared.connectedScenes.compactMap { $0 as? UIWindowScene }
+
+        guard let windowScene = scenes.first(where: { $0.activationState == .foregroundActive }) ?? scenes.first else {
+            if #available(iOS 26.0, *) {
+                preconditionFailure("Unable to locate a UIWindowScene for CalendarLinkCoordinator presentation.")
+            } else {
+                return UIWindow(frame: .zero)
+            }
         }
-        return window
+
+        if let window = windowScene.windows.first(where: { $0.isKeyWindow }) {
+            return window
+        }
+
+        if #available(iOS 26.0, *) {
+            return UIWindow(windowScene: windowScene)
+        } else {
+            let window = UIWindow(frame: windowScene.coordinateSpace.bounds)
+            window.windowScene = windowScene
+            return window
+        }
     }
 }
 

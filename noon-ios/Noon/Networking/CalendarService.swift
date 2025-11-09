@@ -22,6 +22,17 @@ struct GoogleAccount: Identifiable, Decodable, Hashable {
 
     private enum CodingKeys: String, CodingKey {
         case id
+        case userId
+        case googleUserId
+        case email
+        case displayName
+        case avatarURL
+        case createdAt
+        case updatedAt
+    }
+
+    private enum LegacyCodingKeys: String, CodingKey {
+        case id
         case userId = "user_id"
         case googleUserId = "google_user_id"
         case email
@@ -29,6 +40,59 @@ struct GoogleAccount: Identifiable, Decodable, Hashable {
         case avatarURL = "avatar_url"
         case createdAt = "created_at"
         case updatedAt = "updated_at"
+    }
+
+    init(id: String,
+         userId: String,
+         googleUserId: String,
+         email: String,
+         displayName: String?,
+         avatarURL: String?,
+         createdAt: Date,
+         updatedAt: Date) {
+        self.id = id
+        self.userId = userId
+        self.googleUserId = googleUserId
+        self.email = email
+        self.displayName = displayName
+        self.avatarURL = avatarURL
+        self.createdAt = createdAt
+        self.updatedAt = updatedAt
+    }
+
+    init(from decoder: Decoder) throws {
+        let camel = try decoder.container(keyedBy: CodingKeys.self)
+        let snake = try decoder.container(keyedBy: LegacyCodingKeys.self)
+
+        func decodeRequired<T: Decodable>(_ type: T.Type, camelKey: CodingKeys, snakeKey: LegacyCodingKeys) throws -> T {
+            if let value = try camel.decodeIfPresent(type, forKey: camelKey) {
+                return value
+            }
+            if let value = try snake.decodeIfPresent(type, forKey: snakeKey) {
+                return value
+            }
+            let description = "Missing required key \"\(snakeKey.rawValue)\" or \"\(camelKey.rawValue)\" when decoding GoogleAccount."
+            throw DecodingError.keyNotFound(
+                snakeKey,
+                DecodingError.Context(codingPath: decoder.codingPath, debugDescription: description)
+            )
+        }
+
+        func decodeOptional<T: Decodable>(_ type: T.Type, camelKey: CodingKeys, snakeKey: LegacyCodingKeys) throws -> T? {
+            if let value = try camel.decodeIfPresent(type, forKey: camelKey) {
+                return value
+            }
+            return try snake.decodeIfPresent(type, forKey: snakeKey)
+        }
+
+        self.id = try decodeRequired(String.self, camelKey: .id, snakeKey: .id)
+        self.userId = try decodeRequired(String.self, camelKey: .userId, snakeKey: .userId)
+        self.googleUserId = try decodeRequired(String.self, camelKey: .googleUserId, snakeKey: .googleUserId)
+        self.email = try decodeRequired(String.self, camelKey: .email, snakeKey: .email)
+        self.displayName = try decodeOptional(String.self, camelKey: .displayName, snakeKey: .displayName)
+        self.avatarURL = try decodeOptional(String.self, camelKey: .avatarURL, snakeKey: .avatarURL)
+        self.createdAt = try decodeRequired(Date.self, camelKey: .createdAt, snakeKey: .createdAt)
+        self.updatedAt = try decodeRequired(Date.self, camelKey: .updatedAt, snakeKey: .updatedAt)
     }
 }
 

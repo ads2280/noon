@@ -251,9 +251,10 @@
 				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
 				CODE_SIGN_STYLE = Automatic;
 				CURRENT_PROJECT_VERSION = 1;
+				DEVELOPMENT_TEAM = NR3TG286JV;
 				ENABLE_PREVIEWS = YES;
-				INFOPLIST_KEY_GoogleOAuthCallbackURL = "noon://oauth/google";
 				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_KEY_GoogleOAuthCallbackURL = "noon://oauth/google";
 				INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES;
 				INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents = YES;
 				INFOPLIST_KEY_UILaunchScreen_Generation = YES;
@@ -283,9 +284,10 @@
 				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
 				CODE_SIGN_STYLE = Automatic;
 				CURRENT_PROJECT_VERSION = 1;
+				DEVELOPMENT_TEAM = NR3TG286JV;
 				ENABLE_PREVIEWS = YES;
-				INFOPLIST_KEY_GoogleOAuthCallbackURL = "noon://oauth/google";
 				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_KEY_GoogleOAuthCallbackURL = "noon://oauth/google";
 				INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES;
 				INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents = YES;
 				INFOPLIST_KEY_UILaunchScreen_Generation = YES;

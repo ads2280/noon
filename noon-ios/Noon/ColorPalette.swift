@@ -6,6 +6,7 @@
 //
 
 import SwiftUI
+import UIKit
 
 enum ColorPalette {
     enum Semantic {
@@ -56,54 +57,96 @@ enum ColorPalette {
     }
 
     enum Text {
-        static let primary = Color(
-            .displayP3,
-            red: 0.08,
-            green: 0.09,
-            blue: 0.12,
-            opacity: 1.0
+        static let primary = dynamicColor(
+            light: UIColor(
+                displayP3Red: 0.08,
+                green: 0.09,
+                blue: 0.12,
+                alpha: 1.0
+            ),
+            dark: UIColor(
+                displayP3Red: 0.95,
+                green: 0.95,
+                blue: 0.98,
+                alpha: 1.0
+            )
         )
 
-        static let secondary = Color(
-            .displayP3,
-            red: 0.37,
-            green: 0.4,
-            blue: 0.47,
-            opacity: 1.0
+        static let secondary = dynamicColor(
+            light: UIColor(
+                displayP3Red: 0.37,
+                green: 0.4,
+                blue: 0.47,
+                alpha: 1.0
+            ),
+            dark: UIColor(
+                displayP3Red: 0.67,
+                green: 0.7,
+                blue: 0.77,
+                alpha: 1.0
+            )
         )
 
-        static let inverted = Color(
-            .displayP3,
-            red: 0.95,
-            green: 0.95,
-            blue: 0.98,
-            opacity: 1.0
+        static let inverted = dynamicColor(
+            light: UIColor(
+                displayP3Red: 0.95,
+                green: 0.95,
+                blue: 0.98,
+                alpha: 1.0
+            ),
+            dark: UIColor(
+                displayP3Red: 0.08,
+                green: 0.09,
+                blue: 0.12,
+                alpha: 1.0
+            )
         )
     }
 
     enum Surface {
-        static let background = Color(
-            .displayP3,
-            red: 1.0,
-            green: 1.0,
-            blue: 1.0,
-            opacity: 1.0
+        static let background = dynamicColor(
+            light: UIColor(
+                displayP3Red: 1.0,
+                green: 1.0,
+                blue: 1.0,
+                alpha: 1.0
+            ),
+            dark: UIColor(
+                displayP3Red: 0.0,
+                green: 0.0,
+                blue: 0.0,
+                alpha: 1.0
+            )
         )
 
-        static let elevated = Color(
-            .displayP3,
-            red: 0.95,
-            green: 0.96,
-            blue: 0.98,
-            opacity: 1.0
+        static let elevated = dynamicColor(
+            light: UIColor(
+                displayP3Red: 0.95,
+                green: 0.96,
+                blue: 0.98,
+                alpha: 1.0
+            ),
+            dark: UIColor(
+                displayP3Red: 0.12,
+                green: 0.13,
+                blue: 0.16,
+                alpha: 1.0
+            )
         )
 
-        static let overlay = Color(
-            .displayP3,
-            red: 0.86,
-            green: 0.88,
-            blue: 0.93,
-            opacity: 0.55
+        static let overlay = dynamicColor(
+            light: UIColor(
+                displayP3Red: 0.86,
+                green: 0.88,
+                blue: 0.93,
+                alpha: 0.55
+            ),
+            dark: UIColor(
+                displayP3Red: 0.24,
+                green: 0.27,
+                blue: 0.32,
+                alpha: 0.55
+            )
         )
     }
 
@@ -135,19 +178,20 @@ enum ColorPalette {
         static let backgroundBase = LinearGradient(
             gradient: Gradient(
                 colors: [
-                    Color(
-                        .displayP3,
-                        red: 1.0,
-                        green: 1.0,
-                        blue: 1.0,
-                        opacity: 1.0
-                    ),
-                    Color(
-                        .displayP3,
-                        red: 1.0,
-                        green: 1.0,
-                        blue: 1.0,
-                        opacity: 1.0
+                    Surface.background,
+                    dynamicColor(
+                        light: UIColor(
+                            displayP3Red: 0.98,
+                            green: 0.98,
+                            blue: 1.0,
+                            alpha: 1.0
+                        ),
+                        dark: UIColor(
+                            displayP3Red: 0.05,
+                            green: 0.05,
+                            blue: 0.09,
+                            alpha: 1.0
+                        )
                     )
                 ]
             ),
@@ -158,19 +202,33 @@ enum ColorPalette {
         static let backgroundAccentWarm = RadialGradient(
             gradient: Gradient(
                 colors: [
-                    Color(
-                        .displayP3,
-                        red: 1.0,
-                        green: 0.83,
-                        blue: 0.6,
-                        opacity: 0.35
+                    dynamicColor(
+                        light: UIColor(
+                            displayP3Red: 1.0,
+                            green: 0.83,
+                            blue: 0.6,
+                            alpha: 0.35
+                        ),
+                        dark: UIColor(
+                            displayP3Red: 0.95,
+                            green: 0.55,
+                            blue: 0.32,
+                            alpha: 0.25
+                        )
                     ),
-                    Color(
-                        .displayP3,
-                        red: 1.0,
-                        green: 0.92,
-                        blue: 0.83,
-                        opacity: 0.0
+                    dynamicColor(
+                        light: UIColor(
+                            displayP3Red: 1.0,
+                            green: 0.92,
+                            blue: 0.83,
+                            alpha: 0.0
+                        ),
+                        dark: UIColor(
+                            displayP3Red: 0.3,
+                            green: 0.22,
+                            blue: 0.15,
+                            alpha: 0.0
+                        )
                     )
                 ]
             ),
@@ -182,19 +240,33 @@ enum ColorPalette {
         static let backgroundAccentCool = RadialGradient(
             gradient: Gradient(
                 colors: [
-                    Color(
-                        .displayP3,
-                        red: 0.77,
-                        green: 0.87,
-                        blue: 0.97,
-                        opacity: 0.35
+                    dynamicColor(
+                        light: UIColor(
+                            displayP3Red: 0.77,
+                            green: 0.87,
+                            blue: 0.97,
+                            alpha: 0.35
+                        ),
+                        dark: UIColor(
+                            displayP3Red: 0.34,
+                            green: 0.49,
+                            blue: 0.71,
+                            alpha: 0.25
+                        )
                     ),
-                    Color(
-                        .displayP3,
-                        red: 0.9,
-                        green: 0.95,
-                        blue: 0.99,
-                        opacity: 0.0
+                    dynamicColor(
+                        light: UIColor(
+                            displayP3Red: 0.9,
+                            green: 0.95,
+                            blue: 0.99,
+                            alpha: 0.0
+                        ),
+                        dark: UIColor(
+                            displayP3Red: 0.12,
+                            green: 0.17,
+                            blue: 0.24,
+                            alpha: 0.0
+                        )
                     )
                 ]
             ),
@@ -205,3 +277,19 @@ enum ColorPalette {
     }
 }
 
+private extension ColorPalette {
+    static func dynamicColor(light: UIColor, dark: UIColor) -> Color {
+        Color(
+            UIColor { traitCollection in
+                switch traitCollection.userInterfaceStyle {
+                case .dark:
+                    return dark
+                case .light, .unspecified:
+                    fallthrough
+                @unknown default:
+                    return light
+                }
+            }
+        )
+    }
+}
