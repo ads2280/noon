@@ -12,9 +12,8 @@
 
 Noon is a time-first assistant: a SwiftUI app, a FastAPI backend, an LLM calendar agent, a Supabase brain, and a Deepgram-powered transcription sidekick. Every folder here is a piece of the same argument — that better tooling can make our days feel intentional instead of reactionary.
 
-<img width="1206" height="2622" alt="Simulator Screenshot - iPhone 17 - 2025-11-08 at 23 46 55" src="https://github.com/user-attachments/assets/5c35717b-7ce0-4f0c-b841-3b748d6bc2ee" />
-
-<img width="1206" height="2622" alt="Simulator Screenshot - iPhone 17 - 2025-11-09 at 07 24 17" src="https://github.com/user-attachments/assets/e03ba5e8-5654-41cd-bcd9-491fe10c4e71" />
+<img width="1206" height="2622" alt="Simulator Screenshot - iPhone 17 - 2025-11-08 at 23 46 55" src="https://github.com/user-attachments/assets/1ea16a0f-452a-4939-acb7-82e77ab30ed9" />
+<img width="1206" height="2622" alt="Simulator Screenshot - iPhone 17 - 2025-11-09 at 07 24 17" src="https://github.com/user-attachments/assets/346b920e-7e22-4d4c-85ca-5b6997b3c85a" />
 
 ## Why This Exists
 - Calendars hide the why behind events; Noon tries to keep context attached to scheduling.
