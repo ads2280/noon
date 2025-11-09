@@ -1,6 +1,0 @@
-INFO:     Started server process [48657]
-INFO:     Waiting for application startup.
-INFO:     Application startup complete.
-ERROR:    [Errno 1] error while attempting to bind on address ('127.0.0.1', 8080): operation not permitted
-INFO:     Waiting for application shutdown.
-INFO:     Application shutdown complete.

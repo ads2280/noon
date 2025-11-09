@@ -1,7 +1,0 @@
-{
-  "dependencies": ["."],
-  "graphs": {
-    "noon-agent": "noon_agent.main:graph"
-  },
-  "env": ".env"
-}

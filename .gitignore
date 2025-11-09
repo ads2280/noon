@@ -17,3 +17,5 @@ noon-backend/.ipynb_checkpoints/
 # Xcode user-specific files
 xcuserdata/
 *.xcuserstate
+
+.DS_Store
