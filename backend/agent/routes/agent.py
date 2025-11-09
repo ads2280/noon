@@ -1,7 +1,7 @@
 """Agent endpoint for invoking the LangGraph calendar agent."""
 
 import logging
-
+from urllib.parse import urlparse
 from fastapi import APIRouter, Depends, HTTPException, UploadFile, File
 from langgraph_sdk import get_client
 
@@ -89,7 +89,23 @@ async def agent_action(
 
         # Create LangGraph SDK client and invoke agent
         settings = get_settings()
-        client = get_client(url=settings.langgraph_agent_url)
+
+        parsed_url = urlparse(settings.langgraph_agent_url)
+        is_local_agent = parsed_url.hostname in {"localhost", "127.0.0.1"}
+
+        api_key = settings.langsmith_api_key or settings.langgraph_api_key
+
+        if api_key is None and not is_local_agent:
+            logger.error("LangGraph agent API key is missing for remote agent URL.")
+            raise HTTPException(
+                status_code=500,
+                detail="Agent service is not configured with LangSmith authentication credentials."
+            )
+
+        client = get_client(
+            url=settings.langgraph_agent_url,
+            api_key=api_key,
+        )
 
         input_state = {
             "query": transcribed_text,

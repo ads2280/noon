@@ -1,5 +1,5 @@
 //
-//  TranscriptionService.swift
+//  AgentActionService.swift
 //  Noon
 //
 //  Created by GPT-5 Codex on 11/9/25.
@@ -7,31 +7,32 @@
 
 import Foundation
 
-struct TranscriptionResponseDTO: Decodable {
-    let text: String
-}
-
-struct TranscriptionResult {
-    let text: String
+struct AgentActionResult {
     let statusCode: Int
+    let data: Data
+
+    var responseString: String? {
+        String(data: data, encoding: .utf8)
+    }
 }
 
-protocol TranscriptionServicing {
-    func transcribeAudio(at fileURL: URL) async throws -> TranscriptionResult
+protocol AgentActionServicing {
+    func performAgentAction(fileURL: URL, accessToken: String) async throws -> AgentActionResult
 }
 
-struct TranscriptionService: TranscriptionServicing {
+struct AgentActionService: AgentActionServicing {
     enum ServiceError: Error {
         case invalidURL
         case unexpectedResponse
     }
 
-    var baseURL: URL = URL(string: "http://localhost:8001")!
+    func performAgentAction(fileURL: URL, accessToken: String) async throws -> AgentActionResult {
+        let baseURL = AppConfiguration.agentBaseURL
+        let endpoint = baseURL.appendingPathComponent("agent/action")
 
-    func transcribeAudio(at fileURL: URL) async throws -> TranscriptionResult {
-        let endpoint = baseURL.appendingPathComponent("/v1/transcriptions")
         var request = URLRequest(url: endpoint)
         request.httpMethod = "POST"
+        request.addValue("Bearer \(accessToken)", forHTTPHeaderField: "Authorization")
 
         let boundary = UUID().uuidString
         request.setValue("multipart/form-data; boundary=\(boundary)", forHTTPHeaderField: "Content-Type")
@@ -41,27 +42,21 @@ struct TranscriptionService: TranscriptionServicing {
 
         let (data, response) = try await URLSession.shared.data(for: request)
 
-        guard let httpResponse = response as? HTTPURLResponse,
-              200..<300 ~= httpResponse.statusCode else {
-            if let serverMessage = String(data: data, encoding: .utf8), !serverMessage.isEmpty {
-                throw ServerError(statusCode: (response as? HTTPURLResponse)?.statusCode ?? -1, message: serverMessage)
-            }
+        guard let httpResponse = response as? HTTPURLResponse else {
             throw ServiceError.unexpectedResponse
         }
 
-        if let jsonString = String(data: data, encoding: .utf8) {
-            print("[Agent] Raw transcription payload: \(jsonString)")
-        } else {
-            print("[Agent] Received transcription payload (non-UTF8, \(data.count) bytes)")
+        let statusCode = httpResponse.statusCode
+        guard 200..<300 ~= statusCode else {
+            let message = String(data: data, encoding: .utf8) ?? "Unknown error"
+            throw ServerError(statusCode: statusCode, message: message)
         }
 
-        let decoder = JSONDecoder()
-        let dto = try decoder.decode(TranscriptionResponseDTO.self, from: data)
-        return TranscriptionResult(text: dto.text, statusCode: httpResponse.statusCode)
+        return AgentActionResult(statusCode: statusCode, data: data)
     }
 }
 
-private extension TranscriptionService {
+private extension AgentActionService {
     func buildMultipartBody(fileURL: URL, boundary: String) throws -> Data {
         var body = Data()
         let filename = fileURL.lastPathComponent.isEmpty ? "recording.wav" : fileURL.lastPathComponent
@@ -90,4 +85,5 @@ struct ServerError: Error {
     let statusCode: Int
     let message: String
 }
+
 

@@ -28,7 +28,9 @@ class Settings(BaseSettings):
     ]
 
     # LangGraph Agent configuration
-    langgraph_agent_url: str
+    langgraph_agent_url: str = "http://localhost:8000"
+    langgraph_api_key: str | None = None
+    langsmith_api_key: str | None = None
 
     model_config = SettingsConfigDict(
         env_file=".env",

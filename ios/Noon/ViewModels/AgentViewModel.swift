@@ -14,7 +14,7 @@ final class AgentViewModel: ObservableObject {
         case idle
         case recording
         case uploading
-        case completed(text: String)
+        case completed(result: AgentActionResult)
         case failed(message: String)
     }
 
@@ -22,14 +22,14 @@ final class AgentViewModel: ObservableObject {
     @Published private(set) var isRecording: Bool = false
 
     private let recorder: AgentAudioRecorder
-    private let service: TranscriptionServicing
+    private let service: AgentActionServicing
 
     init(
         recorder: AgentAudioRecorder? = nil,
-        service: TranscriptionServicing? = nil
+        service: AgentActionServicing? = nil
     ) {
         self.recorder = recorder ?? AgentAudioRecorder()
-        self.service = service ?? TranscriptionService()
+        self.service = service ?? AgentActionService()
     }
 
     func startRecording() {
@@ -48,26 +48,38 @@ final class AgentViewModel: ObservableObject {
         }
     }
 
-    func stopRecordingAndTranscribe() {
+    func stopAndSendRecording(accessToken: String?) {
         guard isRecording else { return }
 
         isRecording = false
 
         Task {
             do {
-                print("[Agent] Stopping recording and requesting transcript…")
+                print("[Agent] Stopping recording and sending to agent…")
                 guard let recording = try await recorder.stopRecording() else {
                     displayState = .idle
                     return
                 }
 
+                guard let token = accessToken else {
+                    try? FileManager.default.removeItem(at: recording.fileURL)
+                    displayState = .failed(message: "You’re signed out.")
+                    print("[Agent] Missing access token; cannot call agent.")
+                    return
+                }
+
                 displayState = .uploading
                 print("[Agent] Recorded audio duration: \(recording.duration)s")
-                print("[Agent] Uploading audio to transcription service…")
+                print("[Agent] Uploading audio to /agent/action…")
 
-                let result = try await service.transcribeAudio(at: recording.fileURL)
-                displayState = .completed(text: result.text)
-                print("[Agent] Transcription response (\(result.statusCode)): \(result.text)")
+                let result = try await service.performAgentAction(fileURL: recording.fileURL, accessToken: token)
+                displayState = .completed(result: result)
+
+                if let responseString = result.responseString {
+                    print("[Agent] Agent response (\(result.statusCode)): \(responseString)")
+                } else {
+                    print("[Agent] Agent response (\(result.statusCode)) received (\(result.data.count) bytes)")
+                }
 
                 try? FileManager.default.removeItem(at: recording.fileURL)
             } catch {
