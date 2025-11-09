@@ -75,6 +75,13 @@ def _parse_vocabulary(vocab_str: Optional[str]) -> List[str]:
     return [p for p in parts if p]
 
 
+def _vocabulary_param_name(model_name: str) -> str:
+    """Return the Deepgram query parameter for boosted vocabulary."""
+    if model_name.lower().startswith("nova-3"):
+        return "keyterm"
+    return "keywords"
+
+
 def _guess_mime_type(filename: str) -> str:
     ext = Path(filename).suffix.lower()
     mime_types = {
@@ -144,9 +151,10 @@ async def transcribe_audio(
             ("punctuate", "true" if DG_PUNCTUATE else "false"),
             ("language", DG_LANGUAGE),
         ]
+        vocab_param = _vocabulary_param_name(DG_MODEL)
         for term in vocab_terms:
-            # Deepgram supports repeating keywords params
-            params.append(("keywords", term))
+            # Deepgram supports repeating vocabulary params
+            params.append((vocab_param, term))
         
         headers = {
             "Authorization": f"Token {DG_API_KEY}",
@@ -234,8 +242,9 @@ async def websocket_transcribe(websocket: WebSocket):
         ("punctuate", "true" if DG_PUNCTUATE else "false"),
         ("language", DG_LANGUAGE),
     ]
+    vocab_param = _vocabulary_param_name(DG_MODEL)
     for term in start_vocab:
-        query_params.append(("keywords", term))
+        query_params.append((vocab_param, term))
     dg_url = f"{dg_url_base}?{urlencode(query_params, doseq=True)}"
     
     # Forwarding functions are defined within the Deepgram connection block below
