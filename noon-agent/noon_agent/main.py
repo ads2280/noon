@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import logging
 from datetime import datetime
-from typing import Any, Dict, List, Literal, Optional, TypedDict, Union
+from typing import Any, Dict, List, Literal, TypedDict, Union
 
 from langchain_core.runnables import Runnable
 from langgraph.graph import END, START, StateGraph

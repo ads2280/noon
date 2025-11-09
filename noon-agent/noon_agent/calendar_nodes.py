@@ -1,22 +1,20 @@
 """LangGraph nodes for calendar operations."""
 
-from typing import Dict, Any
-from datetime import datetime
+from typing import Any, Dict
 
 from .calendar_state import CalendarAgentState
 from .gcal_auth import get_calendar_service
-from .tools.gcal_tools import (
-    create_event,
-    update_event,
-    delete_event,
-    search_events,
-    get_event_details,
-    get_schedule,
-    check_availability,
-    find_overlap,
-)
-from .tools.friend_tools import resolve_attendees
 from .tools.context_tools import format_event_list
+from .tools.friend_tools import resolve_attendees
+from .tools.gcal_tools import (
+    check_availability,
+    create_event,
+    delete_event,
+    find_overlap,
+    get_schedule,
+    search_events,
+    update_event,
+)
 
 
 def create_event_node(state: CalendarAgentState) -> Dict[str, Any]:

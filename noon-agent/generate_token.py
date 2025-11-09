@@ -1,7 +1,6 @@
 #!/usr/bin/env python3
 """Script to generate token.json for Google Calendar OAuth authentication."""
 
-import os
 import sys
 from pathlib import Path
 

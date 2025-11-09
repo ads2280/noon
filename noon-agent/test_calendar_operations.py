@@ -10,12 +10,12 @@ noon_agent_dir = Path(__file__).parent / "noon_agent"
 sys.path.insert(0, str(noon_agent_dir.parent))
 
 from noon_agent.gcal_wrapper import (
-    get_calendar_service,
     create_calendar_event,
+    delete_calendar_event,
+    get_calendar_service,
     read_calendar_events,
     search_calendar_events,
     update_calendar_event,
-    delete_calendar_event,
 )
 
 
@@ -115,7 +115,7 @@ def main():
         print_result(result, "Create event")
         if result.get("status") == "success":
             created_event_id = result.get("event_id")
-            print(f"\n   📅 Event created successfully!")
+            print("\n   📅 Event created successfully!")
             print(f"   🔗 View at: {result.get('link', 'N/A')}")
     except Exception as e:
         print(f"❌ Exception: {e}")
@@ -139,7 +139,7 @@ def main():
             )
             print_result(result, "Update event")
             if result.get("status") == "success":
-                print(f"\n   ✏️  Event updated successfully!")
+                print("\n   ✏️  Event updated successfully!")
                 print(f"   🔗 View at: {result.get('link', 'N/A')}")
         except Exception as e:
             print(f"❌ Exception: {e}")
@@ -153,7 +153,7 @@ def main():
             result = delete_calendar_event(service=service, event_id=created_event_id)
             print_result(result, "Delete event")
             if result.get("status") == "success":
-                print(f"\n   🗑️  Event deleted successfully!")
+                print("\n   🗑️  Event deleted successfully!")
         except Exception as e:
             print(f"❌ Exception: {e}")
     else:

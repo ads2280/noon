@@ -2,7 +2,6 @@
 
 from datetime import datetime, timedelta
 from typing import Dict, List, Optional
-from uuid import UUID
 
 from .calendar_state import Friend as FriendSchema
 from .calendar_state import UserContext

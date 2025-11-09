@@ -1,8 +1,6 @@
 from datetime import datetime, timedelta
 from types import SimpleNamespace
 
-import pytest
-
 from noon_agent import invoke_agent
 from noon_agent import main as agent_main
 from noon_agent.schemas import ParsedIntent

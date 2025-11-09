@@ -3,14 +3,12 @@
 import json
 from typing import Any, Dict, Literal
 
-from langchain_core.language_models.chat_models import BaseChatModel
 from langchain_core.messages import HumanMessage, SystemMessage
 from langchain_openai import ChatOpenAI
 
 from .calendar_state import CalendarAgentState
 from .config import get_settings
 from .tools.context_tools import parse_relative_time
-
 
 ROUTER_SYSTEM_PROMPT = """You are a calendar intent classifier for the Noon calendar agent.
 

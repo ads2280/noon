@@ -1,12 +1,13 @@
 """Unit tests for the intent parser with smart defaults."""
 
-import pytest
 import random
-from datetime import datetime, timedelta
+from datetime import datetime
 from zoneinfo import ZoneInfo
 
-from noon_agent.helpers import build_intent_parser
+import pytest
+
 from noon_agent.constants import coffee_shops, restaurants
+from noon_agent.helpers import build_intent_parser
 
 
 # Set random seed for deterministic tests

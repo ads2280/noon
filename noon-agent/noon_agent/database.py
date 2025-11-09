@@ -1,7 +1,6 @@
 """Supabase database client and connection management."""
 
 from functools import lru_cache
-from typing import Optional
 
 from supabase import Client, create_client
 

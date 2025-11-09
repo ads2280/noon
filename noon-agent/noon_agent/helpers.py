@@ -1,14 +1,13 @@
 """Helper utilities for Noon agent."""
 
 import logging
-import random
-
-from langchain_core.prompts import ChatPromptTemplate, MessagesPlaceholder
-from langchain.chat_models import init_chat_model
 from datetime import datetime
 
+from langchain.chat_models import init_chat_model
+from langchain_core.prompts import ChatPromptTemplate, MessagesPlaceholder
+
+from .constants import coffee_shops, friends, restaurants
 from .schemas import ParsedIntent
-from .constants import friends, self, coffee_shops, restaurants
 
 logger = logging.getLogger(__name__)
 

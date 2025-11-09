@@ -29,5 +29,13 @@ enum AppConfiguration {
     static var googleOAuthCallbackScheme: String {
         googleOAuthCallbackURL.scheme ?? "noon"
     }
-}
 
+    /// Base URL for calling the Noon agent endpoint.
+    static var agentBaseURL: URL {
+        if let value = infoValue(for: "AgentBaseURL") ?? environmentValue(for: "AGENT_BASE_URL"),
+           let url = URL(string: value) {
+            return url
+        }
+        return URL(string: "http://localhost:8000")!
+    }
+}
