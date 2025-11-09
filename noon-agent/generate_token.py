@@ -11,6 +11,7 @@ sys.path.insert(0, str(noon_agent_dir.parent))
 
 # Import directly from the module file to avoid __init__.py import issues
 import importlib.util
+
 spec = importlib.util.spec_from_file_location("gcal_wrapper", noon_agent_dir / "gcal_wrapper.py")
 gcal_wrapper = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(gcal_wrapper)
@@ -40,6 +41,7 @@ def main():
     print("   4. Click 'Save'")
     print("\n   Starting OAuth flow in 3 seconds...")
     import time
+
     time.sleep(3)
 
     print(f"✓ Found credentials.json at {credentials_path}")
@@ -50,27 +52,25 @@ def main():
     try:
         # This will open a browser for OAuth and save token.json
         service = get_calendar_service(
-            credentials_path=str(credentials_path),
-            token_path=str(token_path)
+            credentials_path=str(credentials_path), token_path=str(token_path)
         )
 
         # Test the connection by getting calendar list
         print("\n✓ Authentication successful!")
         print(f"✓ token.json saved at {token_path}")
-        
+
         # Verify by getting calendar info
         calendar_list = service.calendarList().list().execute()
         primary_calendar = next(
-            (cal for cal in calendar_list.get("items", []) if cal.get("primary")),
-            None
+            (cal for cal in calendar_list.get("items", []) if cal.get("primary")), None
         )
-        
+
         if primary_calendar:
             print(f"\n✓ Connected to calendar: {primary_calendar.get('summary', 'Primary')}")
             print(f"  Calendar ID: {primary_calendar.get('id')}")
-        
+
         print("\n✅ Setup complete! You can now use the calendar agent.")
-        
+
     except Exception as e:
         print(f"\n❌ Error during OAuth flow: {e}")
         print("\nTroubleshooting:")
@@ -82,4 +82,3 @@ def main():
 
 if __name__ == "__main__":
     main()
-

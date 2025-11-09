@@ -155,13 +155,15 @@ def read_calendar_events(
 
         formatted_events = []
         for event in events:
-            formatted_events.append({
-                "event_id": event["id"],
-                "summary": event.get("summary", "No title"),
-                "start": event["start"].get("dateTime", event["start"].get("date")),
-                "end": event["end"].get("dateTime", event["end"].get("date")),
-                "description": event.get("description", ""),
-            })
+            formatted_events.append(
+                {
+                    "event_id": event["id"],
+                    "summary": event.get("summary", "No title"),
+                    "start": event["start"].get("dateTime", event["start"].get("date")),
+                    "end": event["end"].get("dateTime", event["end"].get("date")),
+                    "description": event.get("description", ""),
+                }
+            )
 
         return {
             "status": "success",
@@ -256,9 +258,9 @@ def update_calendar_event(
             event["end"] = {"dateTime": end_time.isoformat(), "timeZone": timezone}
 
         # Update the event
-        updated_event = service.events().update(
-            calendarId=calendar_id, eventId=event_id, body=event
-        ).execute()
+        updated_event = (
+            service.events().update(calendarId=calendar_id, eventId=event_id, body=event).execute()
+        )
 
         return {
             "status": "success",
@@ -276,9 +278,7 @@ def update_calendar_event(
         }
 
 
-def delete_calendar_event(
-    service, event_id: str, calendar_id: str = "primary"
-) -> Dict[str, Any]:
+def delete_calendar_event(service, event_id: str, calendar_id: str = "primary") -> Dict[str, Any]:
     """
     Delete a calendar event.
 

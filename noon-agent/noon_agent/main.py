@@ -73,6 +73,7 @@ def summarize_result(state: State) -> OutputState:
     result = f"{action.capitalize()} action completed: {summary}"
     return {"response": result, "success": True}
 
+
 def create_event(state: State) -> State:
     """Create a calendar event using Google Calendar API."""
     try:
@@ -107,11 +108,12 @@ def read_event(state: State) -> State:
         )
 
         if result["status"] == "success":
-            event_list = "\n".join([
-                f"- {e['summary']} at {e['start']}"
-                for e in result["events"]
-            ])
-            message = f"Found {result['count']} events:\n{event_list}" if result["count"] > 0 else "No events found."
+            event_list = "\n".join([f"- {e['summary']} at {e['start']}" for e in result["events"]])
+            message = (
+                f"Found {result['count']} events:\n{event_list}"
+                if result["count"] > 0
+                else "No events found."
+            )
         else:
             message = f"Failed to read events: {result.get('error', 'Unknown error')}"
 
@@ -178,11 +180,12 @@ def search_event(state: State) -> State:
 
         if result["status"] == "success":
             if result["count"] > 0:
-                event_list = "\n".join([
-                    f"- {e['summary']} at {e['start']}"
-                    for e in result["events"]
-                ])
-                message = f"Found {result['count']} events matching '{state.get('query')}':\n{event_list}"
+                event_list = "\n".join(
+                    [f"- {e['summary']} at {e['start']}" for e in result["events"]]
+                )
+                message = (
+                    f"Found {result['count']} events matching '{state.get('query')}':\n{event_list}"
+                )
             else:
                 message = f"No events found matching '{state.get('query')}'"
         else:
@@ -235,8 +238,6 @@ def invoke_agent(state: State) -> OutputState:
 
     result = graph.invoke(state)
     return {"summary": result.get("summary", "")}
-
-
 
 
 # other ideas
