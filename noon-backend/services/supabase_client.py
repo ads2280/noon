@@ -126,7 +126,9 @@ def upsert_google_account(user_id: str, data: Dict[str, Any]) -> Dict[str, Any]:
     return result.data[0]
 
 
-def update_google_account(user_id: str, account_id: str, data: Dict[str, Any]) -> Dict[str, Any]:
+def update_google_account(
+    user_id: str, account_id: str, data: Dict[str, Any]
+) -> Dict[str, Any]:
     client = get_service_client()
     payload = _without_none(data)
     try:

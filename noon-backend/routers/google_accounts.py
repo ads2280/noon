@@ -29,13 +29,18 @@ async def list_google_accounts(
 
 
 @router.post("/oauth/start", response_model=schema.GoogleOAuthStartResponse)
-async def start_google_oauth(current_user: AuthenticatedUser = Depends(get_current_user)) -> schema.GoogleOAuthStartResponse:
+async def start_google_oauth(
+    current_user: AuthenticatedUser = Depends(get_current_user),
+) -> schema.GoogleOAuthStartResponse:
     state = google_oauth.create_state_token(current_user.id)
     try:
         claims = google_oauth.decode_state_token(state)
     except google_oauth.GoogleStateError:
         # This should never happen because we issue the token, but guard regardless.
-        raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="Failed to prepare OAuth state token.")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Failed to prepare OAuth state token.",
+        )
 
     authorization_url = google_oauth.build_authorization_url(state)
     expires_at = datetime.fromtimestamp(claims["exp"], tz=timezone.utc)
@@ -52,12 +57,16 @@ async def google_oauth_callback(state: str, code: str) -> RedirectResponse:
         claims = google_oauth.decode_state_token(state)
     except google_oauth.GoogleStateError as exc:
         logger.warning("Rejected Google OAuth callback with invalid state: %s", exc)
-        redirect_url = google_oauth.build_app_redirect_url(False, state="", message="invalid_state")
+        redirect_url = google_oauth.build_app_redirect_url(
+            False, state="", message="invalid_state"
+        )
         return RedirectResponse(redirect_url, status_code=status.HTTP_303_SEE_OTHER)
 
     user_id = claims.get("sub")
     if not user_id:
-        redirect_url = google_oauth.build_app_redirect_url(False, state, message="missing_user")
+        redirect_url = google_oauth.build_app_redirect_url(
+            False, state, message="missing_user"
+        )
         return RedirectResponse(redirect_url, status_code=status.HTTP_303_SEE_OTHER)
 
     try:
@@ -66,11 +75,17 @@ async def google_oauth_callback(state: str, code: str) -> RedirectResponse:
         calendars = await google_oauth.fetch_calendar_list(tokens.access_token)
     except google_oauth.GoogleOAuthError as exc:
         logger.error("Google OAuth flow failed for user %s: %s", user_id, exc)
-        redirect_url = google_oauth.build_app_redirect_url(False, state, message="google_error")
+        redirect_url = google_oauth.build_app_redirect_url(
+            False, state, message="google_error"
+        )
         return RedirectResponse(redirect_url, status_code=status.HTTP_303_SEE_OTHER)
     except Exception as exc:  # pragma: no cover - unexpected runtime issues
-        logger.exception("Unexpected error during Google OAuth callback for user %s", user_id)
-        redirect_url = google_oauth.build_app_redirect_url(False, state, message="unexpected_error")
+        logger.exception(
+            "Unexpected error during Google OAuth callback for user %s", user_id
+        )
+        redirect_url = google_oauth.build_app_redirect_url(
+            False, state, message="unexpected_error"
+        )
         return RedirectResponse(redirect_url, status_code=status.HTTP_303_SEE_OTHER)
 
     expires_at = tokens.expires_at()
@@ -98,14 +113,20 @@ async def google_oauth_callback(state: str, code: str) -> RedirectResponse:
         supabase_client.upsert_google_account(user_id, payload)
     except supabase_client.SupabaseStorageError as exc:
         logger.error("Failed to persist Google account for user %s: %s", user_id, exc)
-        redirect_url = google_oauth.build_app_redirect_url(False, state, message="storage_error")
+        redirect_url = google_oauth.build_app_redirect_url(
+            False, state, message="storage_error"
+        )
         return RedirectResponse(redirect_url, status_code=status.HTTP_303_SEE_OTHER)
 
     redirect_url = google_oauth.build_app_redirect_url(True, state, message="linked")
     return RedirectResponse(redirect_url, status_code=status.HTTP_303_SEE_OTHER)
 
 
-@router.post("/", response_model=schema.GoogleAccountResponse, status_code=status.HTTP_201_CREATED)
+@router.post(
+    "/",
+    response_model=schema.GoogleAccountResponse,
+    status_code=status.HTTP_201_CREATED,
+)
 async def create_google_account(
     payload: schema.GoogleAccountCreate,
     current_user: AuthenticatedUser = Depends(get_current_user),

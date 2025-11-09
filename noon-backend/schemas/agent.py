@@ -18,4 +18,3 @@ class AgentChatResponse(BaseModel):
     summary: str
     result: Optional[Dict[str, Any]] = None
     success: bool
-

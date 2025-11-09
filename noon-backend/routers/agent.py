@@ -64,7 +64,9 @@ async def chat_with_agent(
             "messages": payload.text,
             "auth_token": access_token,
             "context": {
-                "primary_calendar_id": user_context.get("primary_calendar_id", "primary"),
+                "primary_calendar_id": user_context.get(
+                    "primary_calendar_id", "primary"
+                ),
                 "timezone": user_context.get("timezone", "UTC"),
                 "all_calendar_ids": user_context.get("all_calendar_ids", []),
                 "friends": user_context.get("friends", []),
@@ -74,14 +76,16 @@ async def chat_with_agent(
         # Invoke the agent
         # Note: graph.invoke returns the full state, not just OutputState
         full_result = graph.invoke(agent_state)
-        
+
         # Extract tool name from action
         tool_name = full_result.get("action", "read")
         if not tool_name:
             tool_name = "read"
 
         # Get summary from response or summary field
-        summary = full_result.get("response") or full_result.get("summary", "No response")
+        summary = full_result.get("response") or full_result.get(
+            "summary", "No response"
+        )
 
         # Determine success
         success = full_result.get("success", True)
@@ -104,4 +108,3 @@ async def chat_with_agent(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"Agent invocation failed: {str(e)}",
         ) from e
-

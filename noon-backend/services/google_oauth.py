@@ -114,7 +114,9 @@ async def exchange_code_for_tokens(code: str) -> GoogleTokens:
         "redirect_uri": settings.google_oauth_redirect_uri,
     }
     async with httpx.AsyncClient(timeout=15.0) as client:
-        response = await client.post(TOKEN_ENDPOINT, data=payload, headers={"Accept": "application/json"})
+        response = await client.post(
+            TOKEN_ENDPOINT, data=payload, headers={"Accept": "application/json"}
+        )
     if response.status_code != httpx.codes.OK:
         raise GoogleOAuthError(
             f"Token exchange failed with status {response.status_code}: {response.text}"
@@ -122,7 +124,9 @@ async def exchange_code_for_tokens(code: str) -> GoogleTokens:
     data = response.json()
     access_token = data.get("access_token")
     if not access_token:
-        raise GoogleOAuthError("Token exchange response did not include an access token.")
+        raise GoogleOAuthError(
+            "Token exchange response did not include an access token."
+        )
 
     return GoogleTokens(
         access_token=data.get("access_token"),
@@ -160,7 +164,9 @@ async def fetch_calendar_list(access_token: str) -> List[Dict[str, Any]]:
     headers = {"Authorization": f"Bearer {access_token}", "Accept": "application/json"}
     params = {"minAccessRole": "reader"}
     async with httpx.AsyncClient(timeout=15.0) as client:
-        response = await client.get(CALENDAR_LIST_ENDPOINT, headers=headers, params=params)
+        response = await client.get(
+            CALENDAR_LIST_ENDPOINT, headers=headers, params=params
+        )
     if response.status_code != httpx.codes.OK:
         raise GoogleOAuthError(
             f"Failed to load Google calendars: {response.status_code} {response.text}"
@@ -182,7 +188,9 @@ async def fetch_calendar_list(access_token: str) -> List[Dict[str, Any]]:
     return sanitized
 
 
-def build_app_redirect_url(success: bool, state: str, message: str | None = None) -> str:
+def build_app_redirect_url(
+    success: bool, state: str, message: str | None = None
+) -> str:
     settings = get_settings()
     base = settings.google_oauth_app_redirect_uri
     params = {
@@ -195,4 +203,3 @@ def build_app_redirect_url(success: bool, state: str, message: str | None = None
     if "?" in base:
         return f"{base}&{query}"
     return f"{base}?{query}"
-

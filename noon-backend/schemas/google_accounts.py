@@ -41,4 +41,3 @@ class GoogleOAuthStartResponse(BaseModel):
     authorization_url: HttpUrl
     state: str = Field(..., min_length=10)
     state_expires_at: datetime
-

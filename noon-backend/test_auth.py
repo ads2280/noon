@@ -30,7 +30,9 @@ try:
             print("   → Set it in your .env file or environment variables")
             return False
         else:
-            print(f"   ✅ PASSED: JWT secret is configured (length: {len(settings.supabase_jwt_secret)})")
+            print(
+                f"   ✅ PASSED: JWT secret is configured (length: {len(settings.supabase_jwt_secret)})"
+            )
 
         # Test 2: Try to sign a test token
         print("\n2. Testing JWT token signing...")
@@ -42,9 +44,7 @@ try:
                 "iat": datetime.now(timezone.utc),
             }
             test_token = jwt.encode(
-                test_payload,
-                settings.supabase_jwt_secret,
-                algorithm="HS256"
+                test_payload, settings.supabase_jwt_secret, algorithm="HS256"
             )
             print(f"   ✅ PASSED: Successfully signed test token")
             print(f"   → Token preview: {test_token[:50]}...")
@@ -59,7 +59,7 @@ try:
                 test_token,
                 settings.supabase_jwt_secret,
                 algorithms=["HS256"],
-                options={"verify_aud": False}
+                options={"verify_aud": False},
             )
             if decoded.get("sub") == "test-user-id-123":
                 print("   ✅ PASSED: Successfully verified test token")
@@ -85,9 +85,11 @@ try:
                 test_token,
                 wrong_secret,
                 algorithms=["HS256"],
-                options={"verify_aud": False}
+                options={"verify_aud": False},
             )
-            print("   ❌ FAILED: Token verification should have failed with wrong secret")
+            print(
+                "   ❌ FAILED: Token verification should have failed with wrong secret"
+            )
             return False
         except jwt.InvalidSignatureError:
             print("   ✅ PASSED: Correctly rejected token with wrong secret")
@@ -112,6 +114,6 @@ except ImportError as e:
 except Exception as e:
     print(f"❌ Unexpected error: {e}")
     import traceback
+
     traceback.print_exc()
     sys.exit(1)
-
