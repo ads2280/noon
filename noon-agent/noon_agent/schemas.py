@@ -1,9 +1,9 @@
 """Shared type definitions used across the graph."""
 
 from datetime import datetime
-from typing import Any, Dict, List, Literal, Optional, TypedDict
+from typing import List, Literal, Optional
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, ConfigDict
 
 
 class ParsedIntent(BaseModel):
@@ -13,5 +13,8 @@ class ParsedIntent(BaseModel):
     location: Optional[str] = None
     people: Optional[List[str]] = None
     name: Optional[str] = None
-    auth: Dict[str, Any] = Field(default_factory=dict)
+    auth_provider: Optional[str] = None
+    auth_token: Optional[str] = None
     summary: Optional[str] = None
+
+    model_config = ConfigDict(extra="forbid")

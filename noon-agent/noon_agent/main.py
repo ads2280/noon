@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from datetime import datetime
-from typing import Any, Dict, List, Literal, TypedDict
+from typing import Any, Dict, List, Literal, Optional, TypedDict
 
 from langgraph.graph import END, START, StateGraph
 from langchain_core.runnables import Runnable
@@ -22,7 +22,8 @@ class State(TypedDict, total=False):
     location: str | None
     people: List[str] | None
     name: str | None
-    auth: Dict[str, Any]
+    auth_provider: str | None
+    auth_token: str | None
     summary: str
     response: str
     success: bool
@@ -39,7 +40,8 @@ def route_action(state: State) -> str:
     return state.get("action", "read")
 
 
-intent_chain: Runnable = build_intent_parser()
+def get_intent_chain() -> Runnable:
+    return build_intent_parser()
 
 
 def parse_intent(state: State) -> State:
@@ -51,7 +53,7 @@ def parse_intent(state: State) -> State:
     else:
         normalized_messages = raw_messages
 
-    parsed = intent_chain.invoke({"messages": normalized_messages})
+    parsed = get_intent_chain().invoke({"messages": normalized_messages})
     next_state = dict(state)
     next_state.update(parsed.model_dump())
     return next_state
