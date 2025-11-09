@@ -12,4 +12,4 @@ dependencies = [
 ]
 
 [tool.setuptools]
-py-modules = ["main", "prompts"]
+py-modules = ["main", "prompts", "__init__"]
