@@ -30,6 +30,44 @@ router = APIRouter(prefix="/agent", tags=["agent"])
 logger = logging.getLogger(__name__)
 
 
+def _extract_intent_category(text: str, tool: str) -> str | None:
+    """Extract intent category from user text and tool."""
+    text_lower = text.lower()
+    
+    if tool == "create":
+        if any(word in text_lower for word in ["meeting", "appointment", "call"]):
+            return "schedule_meeting"
+        elif any(word in text_lower for word in ["coffee", "lunch", "dinner"]):
+            return "schedule_social"
+        return "create_event"
+    elif tool == "read" or tool == "schedule":
+        return "view_calendar"
+    elif tool == "search":
+        return "find_event"
+    elif tool == "update":
+        return "modify_event"
+    elif tool == "delete":
+        return "cancel_event"
+    
+    return None
+
+
+def _extract_entities(result_data: dict | None) -> dict:
+    """Extract entities (people, times, locations) from result data."""
+    entities = {}
+    
+    # Extract from result_data if available
+    if result_data:
+        if "attendees" in result_data:
+            entities["people"] = result_data.get("attendees", [])
+        if "location" in result_data:
+            entities["location"] = result_data.get("location")
+        if "start" in result_data:
+            entities["time"] = result_data.get("start")
+    
+    return entities
+
+
 @router.post("/chat", response_model=agent_schema.AgentChatResponse)
 async def chat_with_agent(
     payload: agent_schema.AgentChatRequest,
@@ -96,12 +134,34 @@ async def chat_with_agent(
         # Extract result data from the agent execution
         result_data = full_result.get("result_data")
 
+        # Log agent request details (enhanced logging)
+        try:
+            from services.supabase_client import get_supabase_client
+            supabase = get_supabase_client()
+            
+            # Extract intent and entities (simplified - can be enhanced with NLP)
+            intent_category = _extract_intent_category(payload.text, tool_name)
+            entities = _extract_entities(result_data)
+            
+            # Update request log with agent details
+            supabase.table("request_logs").update({
+                "agent_action": tool_name,
+                "agent_tool": tool_name,
+                "agent_success": success,
+                "agent_summary": summary[:500],  # Truncate if too long
+                "intent_category": intent_category,
+                "entities": entities,
+            }).eq("user_id", current_user.id).order("created_at", desc=True).limit(1).execute()
+        except Exception as e:
+            logger.debug(f"Failed to update request log with agent details: {e}")
+
         return agent_schema.AgentChatResponse(
             tool=tool_name,
             summary=summary,
             result=result_data,
             success=success,
         )
+    
 
     except HTTPException:
         raise
