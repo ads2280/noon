@@ -13,7 +13,6 @@ struct AgentView: View {
 
     @EnvironmentObject private var authViewModel: AuthViewModel
     @State private var isLoading = false
-    @State private var agentReply: String?
     @State private var errorMessage: String?
 
     private let placeholderTranscript = "schedule lunch with anika at 1pm on nov 10th, monday. give it a funny title"
@@ -28,9 +27,7 @@ struct AgentView: View {
                     .padding(.horizontal, 24)
                     .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
 
-                agentResponseCard
-                    .padding(.horizontal, 24)
-                    .padding(.bottom, 24)
+                Spacer(minLength: 0)
             }
             .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
         }
@@ -42,72 +39,6 @@ struct AgentView: View {
                 microphoneButton
                 statusLabel
             }
-        }
-    }
-
-    private var agentResponseCard: some View {
-        VStack(spacing: 12) {
-            if let reply = agentReply {
-                Text(reply)
-                    .font(.title3.weight(.semibold))
-                    .foregroundStyle(ColorPalette.Text.primary)
-                    .multilineTextAlignment(.leading)
-                    .frame(maxWidth: .infinity, alignment: .leading)
-            } else {
-                Text("Tap the mic to ask Noon something.")
-                    .font(.title3.weight(.semibold))
-                    .foregroundStyle(ColorPalette.Text.secondary)
-                    .multilineTextAlignment(.leading)
-                    .frame(maxWidth: .infinity, alignment: .leading)
-            }
-
-            if let message = errorMessage {
-                Text(message)
-                    .font(.footnote.weight(.medium))
-                    .foregroundStyle(ColorPalette.Semantic.warning)
-                    .frame(maxWidth: .infinity, alignment: .leading)
-            }
-        }
-        .padding(24)
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .background(ColorPalette.Surface.elevated.opacity(0.9))
-        .clipShape(RoundedRectangle(cornerRadius: 28, style: .continuous))
-        .overlay {
-            RoundedRectangle(cornerRadius: 28, style: .continuous)
-                .stroke(ColorPalette.Surface.overlay.opacity(0.2), lineWidth: 1)
-        }
-    }
-
-    private var agentResponseCard: some View {
-        VStack(spacing: 12) {
-            if let reply = agentReply {
-                Text(reply)
-                    .font(.title3.weight(.semibold))
-                    .foregroundStyle(ColorPalette.Text.primary)
-                    .multilineTextAlignment(.leading)
-                    .frame(maxWidth: .infinity, alignment: .leading)
-            } else {
-                Text("Tap the mic to ask Noon something.")
-                    .font(.title3.weight(.semibold))
-                    .foregroundStyle(ColorPalette.Text.secondary)
-                    .multilineTextAlignment(.leading)
-                    .frame(maxWidth: .infinity, alignment: .leading)
-            }
-
-            if let message = errorMessage {
-                Text(message)
-                    .font(.footnote.weight(.medium))
-                    .foregroundStyle(ColorPalette.Semantic.warning)
-                    .frame(maxWidth: .infinity, alignment: .leading)
-            }
-        }
-        .padding(24)
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .background(ColorPalette.Surface.elevated.opacity(0.9))
-        .clipShape(RoundedRectangle(cornerRadius: 28, style: .continuous))
-        .overlay {
-            RoundedRectangle(cornerRadius: 28, style: .continuous)
-                .stroke(ColorPalette.Surface.overlay.opacity(0.2), lineWidth: 1)
         }
     }
 
@@ -159,7 +90,7 @@ struct AgentView: View {
 
     private var statusLabel: some View {
         Group {
-            if let message = statusMessage {
+            if let message = errorMessage ?? statusMessage {
                 Text(message)
                     .foregroundStyle(statusForegroundStyle)
                     .multilineTextAlignment(statusAlignment)
@@ -180,7 +111,7 @@ struct AgentView: View {
         case .idle:
             return nil
         case .recording:
-            return "Listening..."
+            return nil
         case .uploading:
             return "Transcribing…"
         case .completed, .failed:
@@ -189,6 +120,10 @@ struct AgentView: View {
     }
 
     private var statusForegroundStyle: some ShapeStyle {
+        if errorMessage != nil {
+            return ColorPalette.Semantic.destructive
+        }
+
         switch viewModel.displayState {
         case .idle, .uploading:
             return ColorPalette.Text.secondary
@@ -202,6 +137,10 @@ struct AgentView: View {
     }
 
     private var statusAlignment: TextAlignment {
+        if errorMessage != nil {
+            return .leading
+        }
+
         switch viewModel.displayState {
         case .completed, .failed:
             return .center
@@ -233,13 +172,7 @@ struct AgentView: View {
                 throw URLError(.badServerResponse)
             }
 
-            if let reply = try? JSONDecoder().decode(AgentResponse.self, from: data) {
-                agentReply = reply.message
-            } else if let fallback = String(data: data, encoding: .utf8) {
-                agentReply = fallback
-            } else {
-                agentReply = "Received a response but couldn’t read it."
-            }
+            _ = try? JSONDecoder().decode(AgentResponse.self, from: data)
         } catch {
             errorMessage = "Couldn’t reach the agent. Please try again."
         }
