@@ -68,7 +68,11 @@ class GoogleCalendarAPIError(RuntimeError):
         """Create a GoogleCalendarAPIError from a googleapiclient.errors.HttpError."""
         status_code = error.resp.status if hasattr(error, "resp") else 500
         try:
-            payload = json.loads(error.content.decode()) if hasattr(error, "content") else None
+            payload = (
+                json.loads(error.content.decode())
+                if hasattr(error, "content")
+                else None
+            )
         except (ValueError, AttributeError):
             payload = str(error)
         return cls(
@@ -81,7 +85,7 @@ class GoogleCalendarAPIError(RuntimeError):
 class GoogleCalendarWrapper:
     """
     Wrapper for Google Calendar API that takes OAuth credentials.
-    
+
     This service handles authentication and makes requests to the Google Calendar API
     using the official Google Calendar API Python client library.
     """
@@ -93,7 +97,9 @@ class GoogleCalendarWrapper:
         credentials_json_path: Optional[str] = None,
     ) -> None:
         self.credentials = credentials
-        self.credentials_json_path = credentials_json_path or credentials.credentials_json_path
+        self.credentials_json_path = (
+            credentials_json_path or credentials.credentials_json_path
+        )
         self._service = None
 
     def _get_service(self):
@@ -223,4 +229,3 @@ class GoogleCalendarWrapper:
                 break
 
         return calendars
-

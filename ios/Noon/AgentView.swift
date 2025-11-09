@@ -18,12 +18,22 @@ struct AgentView: View {
     @State private var agentTask: Task<Void, Never>?
 
     var body: some View {
-        ZStack {
+        let referenceDate = Date()
+        let displayEvents = ScheduleDisplayHelper.getDisplayEvents(
+            for: referenceDate,
+            highlightEventID: "mock-event-lunch",
+            destructiveEventID: "mock-event-product-review"
+        )
+
+        return ZStack {
             ColorPalette.Gradients.backgroundBase
                 .ignoresSafeArea()
 
             VStack(spacing: 24) {
-                ScheduleView(date: Date())
+                ScheduleView(
+                    date: referenceDate,
+                    events: displayEvents
+                )
                     .padding(.horizontal, 24)
                     .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
 

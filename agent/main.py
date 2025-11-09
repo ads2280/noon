@@ -4,13 +4,12 @@ from langchain.chat_models import init_chat_model
 from typing_extensions import TypedDict
 from typing import Literal, Any, Optional
 from pydantic import BaseModel, Field
-from agent import prompts
+import prompts
 
 logger = logging.getLogger(__name__)
 llm = init_chat_model(
     "openai:gpt-5-nano",
     temperature=0.7,
-    max_tokens=1000,
     configurable_fields=("temperature", "max_tokens", "model"),
 )
 

@@ -175,6 +175,21 @@ enum ColorPalette {
                 alpha: 0.55
             )
         )
+
+        static let destructiveMuted = dynamicColor(
+            light: UIColor(
+                displayP3Red: 0.5,
+                green: 0.52,
+                blue: 0.56,
+                alpha: 0.88
+            ),
+            dark: UIColor(
+                displayP3Red: 0.16,
+                green: 0.18,
+                blue: 0.22,
+                alpha: 0.9
+            )
+        )
     }
 
     enum Gradients {

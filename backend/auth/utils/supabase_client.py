@@ -157,6 +157,45 @@ def list_google_accounts(user_id: str) -> List[Dict[str, Any]]:
     return result.data or []
 
 
+async def get_google_account(user_id: str) -> Dict[str, Any] | None:
+    """
+    Get the first Google account for a user.
+
+    Args:
+        user_id: Supabase user ID
+
+    Returns:
+        Google account dict with tokens, or None if no account linked
+    """
+    client = get_service_client()
+    try:
+        result = (
+            client.table("google_accounts")
+            .select("*")
+            .eq("user_id", user_id)
+            .limit(1)
+            .execute()
+        )
+    except APIError as exc:
+        raise SupabaseStorageError(exc.message) from exc
+
+    if not result.data:
+        return None
+
+    account = result.data[0]
+    # Return account with tokens structure expected by agent
+    return {
+        "id": account.get("id"),
+        "email": account.get("email"),
+        "tokens": {
+            "access_token": account.get("access_token"),
+            "refresh_token": account.get("refresh_token"),
+            "expires_at": account.get("expires_at"),
+            "token_type": account.get("metadata", {}).get("token_type", "Bearer"),
+        },
+    }
+
+
 def upsert_google_account(user_id: str, data: Dict[str, Any]) -> Dict[str, Any]:
     client = get_service_client()
     payload = _without_none({"user_id": user_id, **data})
