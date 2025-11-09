@@ -36,6 +36,10 @@ def test_noop():
 		},
 	)
 	assert resp["model"]
+	# Print operations (expected to be empty)
+	print("Operations returned (noop):")
+	for i, op in enumerate(resp["operations"], start=1):
+		print(f"  {i}. {op.get('op')} -> {json.dumps(op.get('args', {}), default=str)}")
 	assert isinstance(resp["operations"], list)
 	assert len(resp["operations"]) == 0, f"Expected 0 operations, got {len(resp['operations'])}"
 	assert "reasoning" in resp
@@ -51,8 +55,13 @@ def test_list_today():
 		},
 	)
 	assert resp["model"]
-	assert isinstance(resp["operations"], list) and len(resp["operations"]) >= 1
-	first = resp["operations"][0]
+	ops = resp["operations"]
+	# Print all operations with args
+	print("Operations returned (today):")
+	for i, op in enumerate(ops, start=1):
+		print(f"  {i}. {op.get('op')} -> {json.dumps(op.get('args', {}), default=str)}")
+	assert isinstance(ops, list) and len(ops) >= 1
+	first = ops[0]
 	assert first["op"] == "list_events"
 	args = first["args"]
 	assert_keys(args, ["calendarId", "singleEvents", "maxResults"])
@@ -70,6 +79,10 @@ def test_get_event_details():
 		},
 	)
 	ops = resp["operations"]
+	# Print all operations with args
+	print("Operations returned (details):")
+	for i, op in enumerate(ops, start=1):
+		print(f"  {i}. {op.get('op')} -> {json.dumps(op.get('args', {}), default=str)}")
 	assert any(op["op"] == "get_event" for op in ops)
 	get_ops = [op for op in ops if op["op"] == "get_event"]
 	args = get_ops[0]["args"]
@@ -87,6 +100,10 @@ def test_broad_search_query():
 		},
 	)
 	ops = resp["operations"]
+	# Print all operations with args
+	print("Operations returned (broad search):")
+	for i, op in enumerate(ops, start=1):
+		print(f"  {i}. {op.get('op')} -> {json.dumps(op.get('args', {}), default=str)}")
 	assert len(ops) >= 1
 	first = ops[0]
 	assert first["op"] == "list_events"
