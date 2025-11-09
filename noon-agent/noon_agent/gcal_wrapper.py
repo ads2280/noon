@@ -1,14 +1,17 @@
 """Simple Google Calendar API wrapper for noon-agent."""
 
+import logging
 import os
 from datetime import datetime, timedelta
-from typing import Any, Dict, Optional
+from typing import Any, Dict, List, Optional
 
 from google.auth.transport.requests import Request
 from google.oauth2.credentials import Credentials
 from google_auth_oauthlib.flow import InstalledAppFlow
 from googleapiclient.discovery import build
 from googleapiclient.errors import HttpError
+
+logger = logging.getLogger(__name__)
 
 SCOPES = ["https://www.googleapis.com/auth/calendar"]
 
@@ -55,6 +58,7 @@ def create_calendar_event(
     start_time: datetime,
     end_time: datetime,
     description: Optional[str] = None,
+    attendees: Optional[List[str]] = None,
     calendar_id: str = "primary",
     timezone: str = "UTC",
 ) -> Dict[str, Any]:
@@ -67,6 +71,7 @@ def create_calendar_event(
         start_time: Event start datetime
         end_time: Event end datetime
         description: Event description (optional)
+        attendees: List of attendee email addresses (optional)
         calendar_id: Calendar ID (default: "primary")
         timezone: Timezone string (default: "UTC")
 
@@ -74,6 +79,7 @@ def create_calendar_event(
         Dictionary with event details and status
     """
     try:
+        logger.info(f"GCAL_WRAPPER: Building event body for '{summary}'")
         event_body = {
             "summary": summary,
             "start": {
@@ -88,8 +94,15 @@ def create_calendar_event(
 
         if description:
             event_body["description"] = description
+            logger.info(f"GCAL_WRAPPER: Added description: {description}")
 
+        if attendees:
+            event_body["attendees"] = [{"email": email} for email in attendees]
+            logger.info(f"GCAL_WRAPPER: Added {len(attendees)} attendees: {attendees}")
+
+        logger.info(f"GCAL_WRAPPER: Inserting event into calendar '{calendar_id}'...")
         event = service.events().insert(calendarId=calendar_id, body=event_body).execute()
+        logger.info(f"GCAL_WRAPPER: Event created successfully with ID: {event['id']}")
 
         return {
             "status": "success",
@@ -101,6 +114,7 @@ def create_calendar_event(
         }
 
     except HttpError as error:
+        logger.error(f"GCAL_WRAPPER: HttpError occurred: {str(error)}")
         return {
             "status": "error",
             "error": str(error),
