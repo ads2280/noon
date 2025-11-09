@@ -23,7 +23,7 @@ class TestIntentClassification:
             "auth": {},
             "success": False,
             "request": "no-action",
-            "metadata": {}
+            "metadata": {},
         }
         result = noon_graph.invoke(state)
         assert result["request"] == "show-event"
@@ -37,7 +37,7 @@ class TestIntentClassification:
             "auth": {},
             "success": False,
             "request": "no-action",
-            "metadata": {}
+            "metadata": {},
         }
         result = noon_graph.invoke(state)
         assert result["request"] == "show-schedule"
@@ -52,7 +52,7 @@ class TestIntentClassification:
             "auth": {},
             "success": False,
             "request": "no-action",
-            "metadata": {}
+            "metadata": {},
         }
         result = noon_graph.invoke(state)
         assert result["request"] == "create-event"
@@ -66,7 +66,7 @@ class TestIntentClassification:
             "auth": {},
             "success": False,
             "request": "no-action",
-            "metadata": {}
+            "metadata": {},
         }
         result = noon_graph.invoke(state)
         assert result["request"] == "update-event"
@@ -79,7 +79,7 @@ class TestIntentClassification:
             "auth": {},
             "success": False,
             "request": "no-action",
-            "metadata": {}
+            "metadata": {},
         }
         result = noon_graph.invoke(state)
         assert result["request"] == "delete-event"
@@ -92,7 +92,7 @@ class TestIntentClassification:
             "auth": {},
             "success": False,
             "request": "no-action",
-            "metadata": {}
+            "metadata": {},
         }
         result = noon_graph.invoke(state)
         assert result["request"] == "no-action"
@@ -109,7 +109,7 @@ class TestShowSchedule:
             "auth": {},
             "success": False,
             "request": "no-action",
-            "metadata": {}
+            "metadata": {},
         }
         result = noon_graph.invoke(state)
         assert result["request"] == "show-schedule"
@@ -127,7 +127,7 @@ class TestShowSchedule:
             "auth": {},
             "success": False,
             "request": "no-action",
-            "metadata": {}
+            "metadata": {},
         }
         result = noon_graph.invoke(state)
         assert result["request"] == "show-schedule"
@@ -147,7 +147,7 @@ class TestShowSchedule:
             "auth": {},
             "success": False,
             "request": "no-action",
-            "metadata": {}
+            "metadata": {},
         }
         result = noon_graph.invoke(state)
         assert result["request"] == "show-schedule"
@@ -163,7 +163,7 @@ class TestShowSchedule:
             "auth": {},
             "success": False,
             "request": "no-action",
-            "metadata": {}
+            "metadata": {},
         }
         result = noon_graph.invoke(state)
         assert result["request"] == "show-schedule"
@@ -186,7 +186,7 @@ class TestCreateEvent:
             "auth": {},
             "success": False,
             "request": "no-action",
-            "metadata": {}
+            "metadata": {},
         }
         result = noon_graph.invoke(state)
         assert result["request"] == "create-event"
@@ -195,7 +195,10 @@ class TestCreateEvent:
         assert "title" in metadata
         assert "start-date" in metadata
         assert "end-date" in metadata
-        assert "sarah" in metadata["title"].lower() or "meeting" in metadata["title"].lower()
+        assert (
+            "sarah" in metadata["title"].lower()
+            or "meeting" in metadata["title"].lower()
+        )
 
     def test_event_with_location(self):
         """Test creating event with location."""
@@ -204,7 +207,7 @@ class TestCreateEvent:
             "auth": {},
             "success": False,
             "request": "no-action",
-            "metadata": {}
+            "metadata": {},
         }
         result = noon_graph.invoke(state)
         assert result["request"] == "create-event"
@@ -221,7 +224,7 @@ class TestCreateEvent:
             "auth": {},
             "success": False,
             "request": "no-action",
-            "metadata": {}
+            "metadata": {},
         }
         result = noon_graph.invoke(state)
         assert result["request"] == "create-event"
@@ -238,7 +241,7 @@ class TestCreateEvent:
             "auth": {},
             "success": False,
             "request": "no-action",
-            "metadata": {}
+            "metadata": {},
         }
         result = noon_graph.invoke(state)
         assert result["request"] == "create-event"
@@ -260,7 +263,7 @@ class TestUpdateEvent:
             "auth": {},
             "success": False,
             "request": "no-action",
-            "metadata": {}
+            "metadata": {},
         }
         result = noon_graph.invoke(state)
         assert result["request"] == "update-event"
@@ -275,7 +278,7 @@ class TestUpdateEvent:
             "auth": {},
             "success": False,
             "request": "no-action",
-            "metadata": {}
+            "metadata": {},
         }
         result = noon_graph.invoke(state)
         assert result["request"] == "update-event"
@@ -291,7 +294,7 @@ class TestUpdateEvent:
             "auth": {},
             "success": False,
             "request": "no-action",
-            "metadata": {}
+            "metadata": {},
         }
         result = noon_graph.invoke(state)
         assert result["request"] == "update-event"
@@ -310,7 +313,7 @@ class TestDeleteEvent:
             "auth": {},
             "success": False,
             "request": "no-action",
-            "metadata": {}
+            "metadata": {},
         }
         result = noon_graph.invoke(state)
         assert result["request"] == "delete-event"
@@ -325,7 +328,7 @@ class TestDeleteEvent:
             "auth": {},
             "success": False,
             "request": "no-action",
-            "metadata": {}
+            "metadata": {},
         }
         result = noon_graph.invoke(state)
         assert result["request"] == "delete-event"
@@ -344,7 +347,7 @@ class TestEdgeCases:
             "auth": {},
             "success": False,
             "request": "no-action",
-            "metadata": {}
+            "metadata": {},
         }
         result = noon_graph.invoke(state)
         assert result["request"] == "no-action"
@@ -356,7 +359,7 @@ class TestEdgeCases:
             "auth": {},
             "success": False,
             "request": "no-action",
-            "metadata": {}
+            "metadata": {},
         }
         result = noon_graph.invoke(state)
         # Should either be no-action or try to show-event/show-schedule
@@ -369,7 +372,7 @@ class TestEdgeCases:
             "auth": {},
             "success": False,
             "request": "no-action",
-            "metadata": {}
+            "metadata": {},
         }
         result = noon_graph.invoke(state)
         # Should classify as show-event or show-schedule
