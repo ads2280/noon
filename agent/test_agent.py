@@ -1,15 +1,9 @@
 """Tests for the calendar agent."""
 
 import pytest
-from datetime import datetime, timedelta
+from datetime import datetime
 from agent.main import (
     noon_graph,
-    IntentClassification,
-    ShowEventExtraction,
-    ShowScheduleExtraction,
-    CreateEventExtraction,
-    UpdateEventExtraction,
-    DeleteEventExtraction,
 )
 
 
