@@ -108,6 +108,7 @@ enum CalendarServiceError: Error {
 protocol CalendarServicing {
     func fetchCalendars(accessToken: String) async throws -> [GoogleAccount]
     func beginGoogleOAuth(accessToken: String) async throws -> GoogleOAuthStart
+    func deleteCalendar(accessToken: String, accountId: String) async throws
 }
 
 struct GoogleOAuthStart: Decodable {
@@ -208,6 +209,34 @@ final class CalendarService: CalendarServicing {
                 throw calendarError
             }
             calendarLogger.error("❌ Network error when starting Google OAuth: \(String(describing: error))")
+            throw CalendarServiceError.network(error)
+        }
+    }
+
+    func deleteCalendar(accessToken: String, accountId: String) async throws {
+        let request = try makeRequest(path: "/google-accounts/\(accountId)", accessToken: accessToken, method: "DELETE")
+        do {
+            let (_, response) = try await urlSession.data(for: request)
+            guard let httpResponse = response as? HTTPURLResponse else {
+                calendarLogger.error("❌ Non-HTTP response when deleting calendar")
+                throw CalendarServiceError.http(-1)
+            }
+
+            guard 200..<300 ~= httpResponse.statusCode else {
+                if httpResponse.statusCode == 401 {
+                    calendarLogger.error("🚫 Unauthorized when deleting calendar \(accountId, privacy: .private)")
+                    throw CalendarServiceError.unauthorized
+                }
+                calendarLogger.error("❌ HTTP \(httpResponse.statusCode) when deleting calendar \(accountId, privacy: .private)")
+                throw CalendarServiceError.http(httpResponse.statusCode)
+            }
+
+            calendarLogger.debug("🗑️ Deleted calendar account \(accountId, privacy: .private)")
+        } catch {
+            if let calendarError = error as? CalendarServiceError {
+                throw calendarError
+            }
+            calendarLogger.error("❌ Network error when deleting calendar \(accountId, privacy: .private): \(String(describing: error))")
             throw CalendarServiceError.network(error)
         }
     }

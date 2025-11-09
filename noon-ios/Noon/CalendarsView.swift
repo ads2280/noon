@@ -20,74 +20,100 @@ struct CalendarsView: View {
         )
     }
 
+    @State private var accountPendingDeletion: GoogleAccount?
+
     var body: some View {
         ScrollView {
-            VStack(alignment: .leading, spacing: 24) {
-                header
-                connectButton
+            VStack(alignment: .leading, spacing: 20) {
                 content
             }
+            .frame(maxWidth: .infinity, alignment: .leading)
             .padding(.horizontal, 24)
             .padding(.vertical, 32)
         }
         .background(ColorPalette.Surface.background.ignoresSafeArea())
-        .navigationTitle("Calendars")
+        .navigationTitle("Calendar Accounts")
         .toolbarTitleDisplayMode(.inline)
         .task {
             await viewModel.loadCalendars()
+        }
+        .alert("Remove account?", isPresented: Binding(
+            get: { accountPendingDeletion != nil },
+            set: { isPresented in
+                if isPresented == false {
+                    accountPendingDeletion = nil
+                }
+            }
+        )) {
+            Button("Remove", role: .destructive) {
+                if let account = accountPendingDeletion {
+                    Task {
+                        await viewModel.deleteAccount(account)
+                    }
+                }
+                accountPendingDeletion = nil
+            }
+            Button("Cancel", role: .cancel) {
+                accountPendingDeletion = nil
+            }
+        } message: {
+            if let account = accountPendingDeletion {
+                Text("This will disconnect \(account.email) from Noon.")
+            }
+        }
+        .alert("Unable to remove account", isPresented: Binding(
+            get: { viewModel.deletionError != nil },
+            set: { isPresented in
+                if isPresented == false {
+                    viewModel.clearDeletionError()
+                }
+            }
+        )) {
+            Button("OK", role: .cancel) {
+                viewModel.clearDeletionError()
+            }
+        } message: {
+            Text(viewModel.deletionError ?? "")
         }
     }
 }
 
 private extension CalendarsView {
-    var header: some View {
-        VStack(alignment: .leading, spacing: 8) {
-            Text("Connected Calendars")
-                .font(.system(size: 28, weight: .bold, design: .rounded))
-                .foregroundStyle(ColorPalette.Text.primary)
-            Text("Manage the calendars linked to your Noon account.")
-                .font(.callout)
-                .foregroundStyle(ColorPalette.Text.secondary)
-        }
-    }
-
-    var connectButton: some View {
+    var connectInlineButton: some View {
         Button {
             Task {
                 await viewModel.linkCalendar(using: coordinator)
             }
         } label: {
-            Group {
+            HStack(spacing: 10) {
                 if viewModel.isLinking {
-                    HStack(spacing: 12) {
-                        ProgressView()
-                            .progressViewStyle(.circular)
-                        Text("Opening Google Sign-In…")
-                            .font(.headline)
-                    }
+                    ProgressView()
+                        .progressViewStyle(.circular)
+                        .tint(ColorPalette.Text.secondary)
+                        .scaleEffect(0.85, anchor: .center)
                 } else {
-                    HStack(spacing: 12) {
-                        Image(systemName: "plus.circle.fill")
-                            .imageScale(.large)
-                        Text("Connect Google Calendar")
-                            .font(.headline)
-                    }
+                    Image(systemName: "plus")
+                        .imageScale(.medium)
+                        .font(.system(size: 16, weight: .semibold))
                 }
+                Text(viewModel.isLinking ? "Connecting…" : "Connect another account")
+                    .font(.callout.weight(.semibold))
             }
-            .foregroundStyle(ColorPalette.Text.inverted)
+            .padding(.vertical, 10)
+            .padding(.horizontal, 16)
             .frame(maxWidth: .infinity)
-            .padding(.vertical, 18)
+            .background(
+                RoundedRectangle(cornerRadius: 16)
+                    .fill(ColorPalette.Surface.elevated.opacity(0.9))
+            )
+            .overlay(
+                RoundedRectangle(cornerRadius: 16)
+                    .stroke(ColorPalette.Surface.overlay.opacity(0.5), lineWidth: 1)
+            )
+            .foregroundStyle(ColorPalette.Text.primary)
         }
         .buttonStyle(.plain)
-        .background(ColorPalette.Gradients.primary)
-        .clipShape(Capsule())
         .disabled(viewModel.isLinking)
-        .shadow(
-            color: ColorPalette.Semantic.primary.opacity(0.35),
-            radius: 20,
-            x: 0,
-            y: 12
-        )
         .accessibilityIdentifier("connect-google-calendar")
     }
 
@@ -103,13 +129,8 @@ private extension CalendarsView {
             accountsList
         }
 
-        if let message = viewModel.linkingMessage {
-            successBanner(message)
-        }
-
-        if let error = viewModel.linkingError {
-            errorBanner(error)
-        }
+        connectInlineButton
+            .padding(.top, 4)
     }
 
     var loadingState: some View {
@@ -117,7 +138,7 @@ private extension CalendarsView {
             ProgressView()
                 .progressViewStyle(.circular)
                 .tint(ColorPalette.Semantic.secondary)
-            Text("Loading your calendars…")
+            Text("Loading calendar accounts…")
                 .foregroundStyle(ColorPalette.Text.secondary)
         }
         .frame(maxWidth: .infinity)
@@ -140,7 +161,7 @@ private extension CalendarsView {
                     await viewModel.loadCalendars(force: true)
                 }
             }
-            .foregroundStyle(ColorPalette.Text.primary)
+            .foregroundStyle(ColorPalette.Semantic.secondary)
         }
         .frame(maxWidth: .infinity, alignment: .leading)
         .padding()
@@ -151,126 +172,71 @@ private extension CalendarsView {
     }
 
     var emptyState: some View {
-        VStack(alignment: .leading, spacing: 12) {
-            Text("No calendars connected yet")
+        VStack(spacing: 12) {
+            Image(systemName: "calendar.badge.exclamationmark")
+                .imageScale(.large)
+                .foregroundStyle(ColorPalette.Semantic.secondary)
+            Text("No calendar accounts connected yet")
                 .font(.headline)
                 .foregroundStyle(ColorPalette.Text.primary)
-            Text("Connect your Google Calendar to see your schedules here.")
+            Text("Connect a calendar account to get started.")
+                .font(.subheadline)
                 .foregroundStyle(ColorPalette.Text.secondary)
         }
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .padding()
-        .background(
-            RoundedRectangle(cornerRadius: 20)
-                .fill(ColorPalette.Surface.elevated.opacity(0.6))
-        )
+        .frame(maxWidth: .infinity)
+        .padding(.vertical, 48)
     }
 
     var accountsList: some View {
-        VStack(spacing: 16) {
+        VStack(spacing: 12) {
             ForEach(viewModel.accounts, id: \.self) { account in
-                CalendarRow(account: account)
+                accountRow(account)
             }
         }
     }
 
-    func successBanner(_ message: String) -> some View {
-        HStack(spacing: 12) {
-            Image(systemName: "checkmark.seal.fill")
-                .foregroundStyle(ColorPalette.Semantic.success)
-            Text(message)
-                .foregroundStyle(ColorPalette.Text.primary)
-            Spacer()
-            Button {
-                viewModel.clearLinkingFeedback()
-            } label: {
-                Image(systemName: "xmark.circle.fill")
-                    .imageScale(.medium)
-                    .foregroundStyle(ColorPalette.Text.secondary)
-            }
-            .buttonStyle(.plain)
-        }
-        .padding()
-        .background(
-            RoundedRectangle(cornerRadius: 18)
-                .fill(ColorPalette.Surface.elevated.opacity(0.7))
-        )
-    }
-
-    func errorBanner(_ message: String) -> some View {
-        HStack(spacing: 12) {
-            Image(systemName: "exclamationmark.circle.fill")
-                .foregroundStyle(ColorPalette.Semantic.warning)
-            Text(message)
-                .foregroundStyle(ColorPalette.Text.secondary)
-            Spacer()
-            Button {
-                viewModel.clearLinkingFeedback()
-            } label: {
-                Image(systemName: "xmark.circle.fill")
-                    .imageScale(.medium)
-                    .foregroundStyle(ColorPalette.Text.secondary)
-            }
-            .buttonStyle(.plain)
-        }
-        .padding()
-        .background(
-            RoundedRectangle(cornerRadius: 18)
-                .fill(ColorPalette.Surface.elevated.opacity(0.6))
-        )
-    }
-}
-
-private struct CalendarRow: View {
-    let account: GoogleAccount
-
-    var body: some View {
-        VStack(alignment: .leading, spacing: 12) {
-            Text(displayName)
+    func accountRow(_ account: GoogleAccount) -> some View {
+        HStack(spacing: 16) {
+            Text(account.email)
                 .font(.headline)
                 .foregroundStyle(ColorPalette.Text.primary)
-            Text(account.email)
-                .font(.subheadline)
-                .foregroundStyle(ColorPalette.Text.secondary)
-            Text("Google ID: \(account.googleUserId)")
-                .font(.caption)
-                .foregroundStyle(ColorPalette.Text.secondary.opacity(0.8))
-            Divider()
-                .background(ColorPalette.Surface.overlay)
-            HStack(spacing: 12) {
-                Label(formatted(date: account.createdAt), systemImage: "calendar.badge.clock")
-                Spacer()
-                Label("Updated \(formatted(relative: account.updatedAt))", systemImage: "arrow.clockwise.circle")
+                .lineLimit(1)
+                .truncationMode(.middle)
+
+            Spacer()
+
+            if viewModel.isDeleting(account) {
+                ProgressView()
+                    .progressViewStyle(.circular)
+                    .tint(ColorPalette.Text.secondary)
+            } else {
+                Button {
+                    accountPendingDeletion = account
+                } label: {
+                    Image(systemName: "trash.fill")
+                        .imageScale(.medium)
+                        .font(.system(size: 18, weight: .semibold))
+                }
+                .buttonStyle(.plain)
+                .foregroundStyle(ColorPalette.Semantic.destructive)
+                .accessibilityLabel("Remove \(account.email)")
             }
-            .font(.caption)
-            .foregroundStyle(ColorPalette.Text.secondary.opacity(0.9))
         }
-        .padding(20)
-        .frame(maxWidth: .infinity, alignment: .leading)
+        .padding(.vertical, 18)
+        .padding(.horizontal, 20)
         .background(
-            RoundedRectangle(cornerRadius: 24)
+            RoundedRectangle(cornerRadius: 20)
                 .fill(ColorPalette.Surface.elevated.opacity(0.85))
         )
         .overlay(
-            RoundedRectangle(cornerRadius: 24)
-                .stroke(ColorPalette.Surface.overlay.opacity(0.5), lineWidth: 1)
+            RoundedRectangle(cornerRadius: 20)
+                .stroke(ColorPalette.Surface.overlay.opacity(0.4), lineWidth: 1)
         )
     }
 
-    private var displayName: String {
-        if let name = account.displayName, name.isEmpty == false {
-            return name
-        }
-        return account.email
-    }
+    func successBanner(_ message: String) -> some View { EmptyView() }
 
-    private func formatted(date: Date) -> String {
-        date.formatted(date: .abbreviated, time: .shortened)
-    }
-
-    private func formatted(relative date: Date) -> String {
-        date.formatted(.relative(presentation: .named))
-    }
+    func errorBanner(_ message: String) -> some View { EmptyView() }
 }
 
 #Preview {
@@ -281,9 +247,11 @@ private struct CalendarRow: View {
     .preferredColorScheme(.dark)
 }
 
-private struct MockCalendarService: CalendarServicing {
-    func fetchCalendars(accessToken: String) async throws -> [GoogleAccount] {
-        [
+@MainActor
+private final class MockCalendarService: CalendarServicing {
+    private var accounts: [GoogleAccount]
+
+    init(accounts: [GoogleAccount] = [
             GoogleAccount(
                 id: UUID().uuidString,
                 userId: UUID().uuidString,
@@ -304,7 +272,12 @@ private struct MockCalendarService: CalendarServicing {
                 createdAt: Date().addingTimeInterval(-86_400 * 20),
                 updatedAt: Date().addingTimeInterval(-9_000)
             ),
-        ]
+    ]) {
+        self.accounts = accounts
+    }
+
+    func fetchCalendars(accessToken: String) async throws -> [GoogleAccount] {
+        accounts
     }
 
     func beginGoogleOAuth(accessToken: String) async throws -> GoogleOAuthStart {
@@ -313,6 +286,10 @@ private struct MockCalendarService: CalendarServicing {
             state: "mock-state",
             stateExpiresAt: Date().addingTimeInterval(300)
         )
+    }
+
+    func deleteCalendar(accessToken: String, accountId: String) async throws {
+        accounts.removeAll { $0.id == accountId }
     }
 }
 

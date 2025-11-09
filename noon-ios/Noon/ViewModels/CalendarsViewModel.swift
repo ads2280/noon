@@ -16,6 +16,8 @@ final class CalendarsViewModel: ObservableObject {
     @Published private(set) var isLinking: Bool = false
     @Published private(set) var linkingMessage: String?
     @Published private(set) var linkingError: String?
+    @Published private(set) var deletingAccountIDs: Set<String> = []
+    @Published private(set) var deletionError: String?
 
     private let accessToken: String
     private let calendarService: CalendarServicing
@@ -109,6 +111,36 @@ final class CalendarsViewModel: ObservableObject {
     func clearLinkingFeedback() {
         linkingError = nil
         linkingMessage = nil
+    }
+
+    func deleteAccount(_ account: GoogleAccount) async {
+        guard deletingAccountIDs.contains(account.id) == false else { return }
+
+        deletingAccountIDs.insert(account.id)
+        defer { deletingAccountIDs.remove(account.id) }
+
+        do {
+            try await calendarService.deleteCalendar(accessToken: accessToken, accountId: account.id)
+            accounts.removeAll { $0.id == account.id }
+            deletionError = nil
+        } catch let serviceError as CalendarServiceError {
+            switch serviceError {
+            case .unauthorized:
+                deletionError = "Your session has expired. Please sign in again."
+            default:
+                deletionError = "We couldn't remove that account. Please try again."
+            }
+        } catch {
+            deletionError = "We couldn't remove that account. Please try again."
+        }
+    }
+
+    func isDeleting(_ account: GoogleAccount) -> Bool {
+        deletingAccountIDs.contains(account.id)
+    }
+
+    func clearDeletionError() {
+        deletionError = nil
     }
 
     private enum OAuthCallbackOutcome {
