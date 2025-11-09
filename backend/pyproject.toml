@@ -20,6 +20,7 @@ dependencies = [
     "google-auth-httplib2>=0.2.1",
     "google-auth-oauthlib>=1.2.3",
     "aiohttp>=3.13.2",
+    "python-multipart>=0.0.20",
 ]
 
 [project.optional-dependencies]

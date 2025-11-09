@@ -7,7 +7,7 @@ from langgraph_sdk import get_client
 from schemas.user import AuthenticatedUser
 from schemas.agent_response import AgentResponse
 from dependencies import get_current_user
-from auth.utils.supabase_client import get_google_account
+from services import supabase_client
 from config import get_settings
 from v2nl import TranscriptionService
 
@@ -31,6 +31,28 @@ async def agent_action(
     is passed to the agent which will classify intent and extract metadata for calendar operations.
     """
     try:
+        # Get user's Google OAuth tokens from Supabase
+        accounts = supabase_client.list_google_accounts(current_user.id)
+        if not accounts:
+            raise HTTPException(
+                status_code=400,
+                detail="No Google account linked. Please connect a Google account first."
+            )
+        
+        # Choose first account
+        google_account = accounts[0]
+        
+        # Prepare auth data with Google tokens
+        # The agent expects tokens in a nested structure
+        auth = {
+            "user_id": current_user.id,
+            "google_tokens": {
+                "access_token": google_account.get("access_token"),
+                "refresh_token": google_account.get("refresh_token"),
+                "expires_at": google_account.get("expires_at"),
+            }
+        }
+
         # Validate file
         if not file or not file.filename:
             raise HTTPException(
@@ -68,19 +90,6 @@ async def agent_action(
 
         logger.info(f"Transcription completed: {transcribed_text[:100]}...")
 
-        # Get user's Google OAuth tokens from Supabase
-        google_account = await get_google_account(current_user.id)
-        if not google_account:
-            raise HTTPException(
-                status_code=400,
-                detail="No Google account linked. Please connect a Google account first."
-            )
-
-        # Prepare auth data with Google tokens
-        auth = {
-            "user_id": current_user.id,
-            "google_tokens": google_account.get("tokens", {})
-        }
 
         # Create LangGraph SDK client and invoke agent
         settings = get_settings()
