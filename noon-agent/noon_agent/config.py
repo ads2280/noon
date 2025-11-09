@@ -10,7 +10,7 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 class AgentSettings(BaseSettings):
     """Project level configuration."""
 
-    model_config = SettingsConfigDict(env_file=".env", env_file_encoding="utf-8")
+    model_config = SettingsConfigDict(env_file=".env", env_file_encoding="utf-8", extra="ignore")
 
     model: str = Field(
         default="gpt-4o-mini",
