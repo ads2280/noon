@@ -114,7 +114,9 @@ class TestShowSchedule:
         assert "T" in start_time  # Must have time component
         assert "T" in end_time  # Must have time component
         # Check for timezone (Z or +/- offset)
-        assert start_time.endswith("Z") or "+" in start_time or start_time.count("-") > 2
+        assert (
+            start_time.endswith("Z") or "+" in start_time or start_time.count("-") > 2
+        )
         assert end_time.endswith("Z") or "+" in end_time or end_time.count("-") > 2
 
     def test_next_week_parsing(self):
@@ -133,8 +135,8 @@ class TestShowSchedule:
         end_time = result["metadata"]["end-time"]
 
         # Next week should be a 7-day range
-        start = datetime.fromisoformat(start_time.replace('Z', '+00:00'))
-        end = datetime.fromisoformat(end_time.replace('Z', '+00:00'))
+        start = datetime.fromisoformat(start_time.replace("Z", "+00:00"))
+        end = datetime.fromisoformat(end_time.replace("Z", "+00:00"))
         assert (end - start).days >= 6  # At least 6 days difference
 
     def test_specific_day_parsing(self):
@@ -152,8 +154,8 @@ class TestShowSchedule:
         start_time = result["metadata"]["start-time"]
         end_time = result["metadata"]["end-time"]
         # For single day, start and end should be on the same day
-        start = datetime.fromisoformat(start_time.replace('Z', '+00:00'))
-        end = datetime.fromisoformat(end_time.replace('Z', '+00:00'))
+        start = datetime.fromisoformat(start_time.replace("Z", "+00:00"))
+        end = datetime.fromisoformat(end_time.replace("Z", "+00:00"))
         assert start.date() == end.date()  # Same day for single day query
 
     def test_weekend_parsing(self):
@@ -171,8 +173,8 @@ class TestShowSchedule:
         # Weekend should be 2 days (Saturday and Sunday)
         start_time = result["metadata"]["start-time"]
         end_time = result["metadata"]["end-time"]
-        start = datetime.fromisoformat(start_time.replace('Z', '+00:00'))
-        end = datetime.fromisoformat(end_time.replace('Z', '+00:00'))
+        start = datetime.fromisoformat(start_time.replace("Z", "+00:00"))
+        end = datetime.fromisoformat(end_time.replace("Z", "+00:00"))
         assert (end - start).days <= 1  # 0 or 1 day difference
 
 

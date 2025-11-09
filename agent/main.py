@@ -74,34 +74,36 @@ class ShowScheduleExtraction(BaseModel):
 
     start_time: str = Field(
         description="Start datetime in ISO 8601 format with timezone (YYYY-MM-DDTHH:MM:SS±HH:MM or YYYY-MM-DDTHH:MM:SSZ)",
-        alias="start-time"
+        alias="start-time",
     )
     end_time: str = Field(
         description="End datetime in ISO 8601 format with timezone (YYYY-MM-DDTHH:MM:SS±HH:MM or YYYY-MM-DDTHH:MM:SSZ)",
-        alias="end-time"
+        alias="end-time",
     )
 
-    @field_validator('start_time', 'end_time')
+    @field_validator("start_time", "end_time")
     @classmethod
     def validate_iso_datetime_with_timezone(cls, v: str) -> str:
         """Validate that the string is in ISO 8601 format with timezone and includes time component."""
         if not v:
-            raise ValueError('Datetime string cannot be empty')
+            raise ValueError("Datetime string cannot be empty")
 
         # Check for time component (must have 'T' separator)
-        if 'T' not in v:
-            raise ValueError('Must include time component (YYYY-MM-DDTHH:MM:SS format)')
+        if "T" not in v:
+            raise ValueError("Must include time component (YYYY-MM-DDTHH:MM:SS format)")
 
         # Check for timezone (must have 'Z' or '+'/'-' timezone offset)
-        if not (v.endswith('Z') or '+' in v.split('T')[1] or '-' in v.split('T')[1]):
-            raise ValueError('Must include timezone (Z or ±HH:MM offset)')
+        if not (v.endswith("Z") or "+" in v.split("T")[1] or "-" in v.split("T")[1]):
+            raise ValueError("Must include timezone (Z or ±HH:MM offset)")
 
         try:
             # Parse to validate format
-            datetime.fromisoformat(v.replace('Z', '+00:00'))
+            datetime.fromisoformat(v.replace("Z", "+00:00"))
             return v
         except ValueError as e:
-            raise ValueError(f'Must be valid ISO 8601 datetime format with timezone: {e}')
+            raise ValueError(
+                f"Must be valid ISO 8601 datetime format with timezone: {e}"
+            )
 
     class Config:
         populate_by_name = True
@@ -113,11 +115,11 @@ class CreateEventExtraction(BaseModel):
     title: str = Field(description="Event title")
     start_time: str = Field(
         description="Start datetime in ISO 8601 format with timezone (YYYY-MM-DDTHH:MM:SS±HH:MM or YYYY-MM-DDTHH:MM:SSZ)",
-        alias="start-time"
+        alias="start-time",
     )
     end_time: str = Field(
         description="End datetime in ISO 8601 format with timezone (YYYY-MM-DDTHH:MM:SS±HH:MM or YYYY-MM-DDTHH:MM:SSZ)",
-        alias="end-time"
+        alias="end-time",
     )
     location: Optional[str] = Field(default=None, description="Event location")
     attendees: Optional[list[str]] = Field(
@@ -125,27 +127,29 @@ class CreateEventExtraction(BaseModel):
     )
     description: Optional[str] = Field(default=None, description="Event description")
 
-    @field_validator('start_time', 'end_time')
+    @field_validator("start_time", "end_time")
     @classmethod
     def validate_iso_datetime_with_timezone(cls, v: str) -> str:
         """Validate that the string is in ISO 8601 format with timezone and includes time component."""
         if not v:
-            raise ValueError('Datetime string cannot be empty')
+            raise ValueError("Datetime string cannot be empty")
 
         # Check for time component (must have 'T' separator)
-        if 'T' not in v:
-            raise ValueError('Must include time component (YYYY-MM-DDTHH:MM:SS format)')
+        if "T" not in v:
+            raise ValueError("Must include time component (YYYY-MM-DDTHH:MM:SS format)")
 
         # Check for timezone (must have 'Z' or '+'/'-' timezone offset)
-        if not (v.endswith('Z') or '+' in v.split('T')[1] or '-' in v.split('T')[1]):
-            raise ValueError('Must include timezone (Z or ±HH:MM offset)')
+        if not (v.endswith("Z") or "+" in v.split("T")[1] or "-" in v.split("T")[1]):
+            raise ValueError("Must include timezone (Z or ±HH:MM offset)")
 
         try:
             # Parse to validate format
-            datetime.fromisoformat(v.replace('Z', '+00:00'))
+            datetime.fromisoformat(v.replace("Z", "+00:00"))
             return v
         except ValueError as e:
-            raise ValueError(f'Must be valid ISO 8601 datetime format with timezone: {e}')
+            raise ValueError(
+                f"Must be valid ISO 8601 datetime format with timezone: {e}"
+            )
 
     class Config:
         populate_by_name = True
@@ -178,7 +182,7 @@ class UpdateEventExtraction(BaseModel):
         default=None, description="New description if changing"
     )
 
-    @field_validator('new_start_time', 'new_end_time')
+    @field_validator("new_start_time", "new_end_time")
     @classmethod
     def validate_iso_datetime_with_timezone(cls, v: Optional[str]) -> Optional[str]:
         """Validate that the string is in ISO 8601 format with timezone and includes time component."""
@@ -187,22 +191,24 @@ class UpdateEventExtraction(BaseModel):
             return v
 
         if not v:
-            raise ValueError('Datetime string cannot be empty')
+            raise ValueError("Datetime string cannot be empty")
 
         # Check for time component (must have 'T' separator)
-        if 'T' not in v:
-            raise ValueError('Must include time component (YYYY-MM-DDTHH:MM:SS format)')
+        if "T" not in v:
+            raise ValueError("Must include time component (YYYY-MM-DDTHH:MM:SS format)")
 
         # Check for timezone (must have 'Z' or '+'/'-' timezone offset)
-        if not (v.endswith('Z') or '+' in v.split('T')[1] or '-' in v.split('T')[1]):
-            raise ValueError('Must include timezone (Z or ±HH:MM offset)')
+        if not (v.endswith("Z") or "+" in v.split("T")[1] or "-" in v.split("T")[1]):
+            raise ValueError("Must include timezone (Z or ±HH:MM offset)")
 
         try:
             # Parse to validate format
-            datetime.fromisoformat(v.replace('Z', '+00:00'))
+            datetime.fromisoformat(v.replace("Z", "+00:00"))
             return v
         except ValueError as e:
-            raise ValueError(f'Must be valid ISO 8601 datetime format with timezone: {e}')
+            raise ValueError(
+                f"Must be valid ISO 8601 datetime format with timezone: {e}"
+            )
 
     class Config:
         populate_by_name = True
