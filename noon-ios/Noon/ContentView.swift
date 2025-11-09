@@ -38,8 +38,12 @@ struct ContentView: View {
                 }
                 .animation(.easeInOut, value: viewModel.phase)
             }
-            .navigationTitle("Noon")
             .toolbar {
+                ToolbarItem(placement: .principal) {
+                    Text("Noon")
+                        .font(.system(size: 20, weight: .semibold, design: .rounded))
+                        .foregroundStyle(ColorPalette.Gradients.primary)
+                }
                 if viewModel.phase == .authenticated {
                     ToolbarItem(placement: .navigationBarTrailing) {
                         Menu {
@@ -63,6 +67,7 @@ struct ContentView: View {
                     }
                 }
             }
+            .navigationBarTitleDisplayMode(.inline)
             .toolbar(viewModel.phase == .authenticated ? .visible : .hidden, for: .navigationBar)
             .alert("Something went wrong", isPresented: Binding(
                 get: { viewModel.errorMessage != nil },
