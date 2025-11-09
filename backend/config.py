@@ -19,6 +19,13 @@ class Settings(BaseSettings):
     google_client_id: str | None = None
     google_client_secret: str | None = None
     google_redirect_uri: str | None = None
+    google_oauth_redirect_uri: str | None = None
+    google_oauth_app_redirect_uri: str | None = None
+    google_oauth_scopes: list[str] = [
+        "https://www.googleapis.com/auth/userinfo.email",
+        "https://www.googleapis.com/auth/userinfo.profile",
+        "https://www.googleapis.com/auth/calendar.readonly",
+    ]
 
     model_config = SettingsConfigDict(
         env_file=".env",

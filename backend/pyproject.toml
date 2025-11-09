@@ -17,6 +17,7 @@ dependencies = [
     "langgraph>=0.2.53",
     "langchain-core>=0.2.27",
     "google-api-python-client>=2.143.0",
+    "aiohttp>=3.13.2",
 ]
 
 [project.optional-dependencies]
