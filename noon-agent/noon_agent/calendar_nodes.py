@@ -163,7 +163,9 @@ def get_schedule_node(state: CalendarAgentState) -> Dict[str, Any]:
     )
 
     formatted = format_event_list(result["events"], state["user_context"]["timezone"])
-    response = f"Your schedule from {params.get('time_min')} to {params.get('time_max')}:\n{formatted}"
+    response = (
+        f"Your schedule from {params.get('time_min')} to {params.get('time_max')}:\n{formatted}"
+    )
 
     return {**state, "result": result, "response": response}
 
@@ -240,10 +242,7 @@ def find_overlap_node(state: CalendarAgentState) -> Dict[str, Any]:
 
     if free_count > 0:
         slots_preview = "\n".join(
-            [
-                f"- {slot['start']} to {slot['end']}"
-                for slot in result["common_free_slots"][:5]
-            ]
+            [f"- {slot['start']} to {slot['end']}" for slot in result["common_free_slots"][:5]]
         )
         response += f":\n{slots_preview}"
 

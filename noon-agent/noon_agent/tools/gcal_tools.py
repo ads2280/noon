@@ -212,7 +212,11 @@ def check_availability(
     """
     # Get free/busy info for all calendars
     freebusy_result = get_freebusy_api(
-        service=service, calendar_ids=calendar_ids, time_min=time_min, time_max=time_max, timezone=timezone
+        service=service,
+        calendar_ids=calendar_ids,
+        time_min=time_min,
+        time_max=time_max,
+        timezone=timezone,
     )
 
     calendars_data = freebusy_result.get("calendars", {})
@@ -272,7 +276,11 @@ def find_overlap(
     """
     # Get free/busy info for all calendars
     freebusy_result = get_freebusy_api(
-        service=service, calendar_ids=calendar_ids, time_min=time_min, time_max=time_max, timezone=timezone
+        service=service,
+        calendar_ids=calendar_ids,
+        time_min=time_min,
+        time_max=time_max,
+        timezone=timezone,
     )
 
     calendars_data = freebusy_result.get("calendars", {})
@@ -383,11 +391,13 @@ def _calculate_free_slots(
                 break
 
         if is_free:
-            free_slots.append({
-                "start": current_time.isoformat(),
-                "end": slot_end.isoformat(),
-                "duration_minutes": duration_minutes,
-            })
+            free_slots.append(
+                {
+                    "start": current_time.isoformat(),
+                    "end": slot_end.isoformat(),
+                    "duration_minutes": duration_minutes,
+                }
+            )
 
         current_time += increment
 

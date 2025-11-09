@@ -136,7 +136,9 @@ def create_event(state: State) -> State:
         service = get_calendar_service(auth_token)
 
         # Get calendar_id from state or context, default to "primary"
-        calendar_id = state.get("calendar_id") or state.get("context", {}).get("primary_calendar_id", "primary")
+        calendar_id = state.get("calendar_id") or state.get("context", {}).get(
+            "primary_calendar_id", "primary"
+        )
         logger.info(f"CREATE_EVENT: Using calendar_id: {calendar_id}")
 
         # Handle event title - try name first, then summary, then default
@@ -212,7 +214,9 @@ def read_event(state: State) -> State:
         service = get_calendar_service(auth_token)
 
         # Get calendar_id from state or context, default to "primary"
-        calendar_id = state.get("calendar_id") or state.get("context", {}).get("primary_calendar_id", "primary")
+        calendar_id = state.get("calendar_id") or state.get("context", {}).get(
+            "primary_calendar_id", "primary"
+        )
         logger.info(f"READ_EVENT: Using calendar_id: {calendar_id}")
 
         logger.info(
@@ -254,7 +258,7 @@ def read_event(state: State) -> State:
 def get_schedule(state: State) -> State:
     """
     Get a list of events across a date range (start day to end day).
-    
+
     This function explicitly handles date ranges and returns all events
     in the specified time period. Useful for viewing schedules.
     """
@@ -269,23 +273,22 @@ def get_schedule(state: State) -> State:
         service = get_calendar_service(auth_token)
 
         # Get calendar_id from state or context, default to "primary"
-        calendar_id = state.get("calendar_id") or state.get("context", {}).get("primary_calendar_id", "primary")
+        calendar_id = state.get("calendar_id") or state.get("context", {}).get(
+            "primary_calendar_id", "primary"
+        )
         logger.info(f"GET_SCHEDULE: Using calendar_id: {calendar_id}")
 
         # Validate date range
         start_time = state.get("start_time")
         end_time = state.get("end_time")
-        
+
         if not start_time or not end_time:
             return _with_summary(
-                state,
-                "Error: start_time and end_time are required for schedule retrieval"
+                state, "Error: start_time and end_time are required for schedule retrieval"
             )
 
-        logger.info(
-            f"GET_SCHEDULE: Date range - start: {start_time}, end: {end_time}"
-        )
-        
+        logger.info(f"GET_SCHEDULE: Date range - start: {start_time}, end: {end_time}")
+
         # Get events with higher limit for schedule views
         result = read_calendar_events(
             service=service,
@@ -299,13 +302,15 @@ def get_schedule(state: State) -> State:
         if result["status"] == "success":
             events = result.get("events", [])
             logger.info(f"GET_SCHEDULE: Found {len(events)} events")
-            
+
             # Format events for display
             if events:
-                event_list = "\n".join([
-                    f"- {e['summary']} at {e['start']} (until {e.get('end', 'N/A')})"
-                    for e in events
-                ])
+                event_list = "\n".join(
+                    [
+                        f"- {e['summary']} at {e['start']} (until {e.get('end', 'N/A')})"
+                        for e in events
+                    ]
+                )
                 message = f"Schedule from {start_time} to {end_time}:\nFound {len(events)} events:\n{event_list}"
             else:
                 message = f"No events found in the date range from {start_time} to {end_time}."
@@ -339,7 +344,9 @@ def update_event(state: State) -> State:
         service = get_calendar_service(auth_token)
 
         # Get calendar_id from state or context, default to "primary"
-        calendar_id = state.get("calendar_id") or state.get("context", {}).get("primary_calendar_id", "primary")
+        calendar_id = state.get("calendar_id") or state.get("context", {}).get(
+            "primary_calendar_id", "primary"
+        )
         logger.info(f"UPDATE_EVENT: Using calendar_id: {calendar_id}, event_id: {event_id}")
 
         # Get timezone from context or default to UTC
@@ -384,7 +391,9 @@ def delete_event(state: State) -> State:
         service = get_calendar_service(auth_token)
 
         # Get calendar_id from state or context, default to "primary"
-        calendar_id = state.get("calendar_id") or state.get("context", {}).get("primary_calendar_id", "primary")
+        calendar_id = state.get("calendar_id") or state.get("context", {}).get(
+            "primary_calendar_id", "primary"
+        )
         logger.info(f"DELETE_EVENT: Using calendar_id: {calendar_id}, event_id: {event_id}")
 
         result = delete_calendar_event(
@@ -421,7 +430,9 @@ def search_event(state: State) -> State:
         service = get_calendar_service(auth_token)
 
         # Get calendar_id from state or context, default to "primary"
-        calendar_id = state.get("calendar_id") or state.get("context", {}).get("primary_calendar_id", "primary")
+        calendar_id = state.get("calendar_id") or state.get("context", {}).get(
+            "primary_calendar_id", "primary"
+        )
         logger.info(f"SEARCH_EVENT: Using calendar_id: {calendar_id}, query: {query}")
 
         result = search_calendar_events(
@@ -437,9 +448,7 @@ def search_event(state: State) -> State:
                 event_list = "\n".join(
                     [f"- {e['summary']} at {e['start']}" for e in result["events"]]
                 )
-                message = (
-                    f"Found {result['count']} events matching '{query}':\n{event_list}"
-                )
+                message = f"Found {result['count']} events matching '{query}':\n{event_list}"
             else:
                 message = f"No events found matching '{query}'"
             next_state = _with_summary(state, message)

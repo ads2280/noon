@@ -28,7 +28,7 @@ def build_intent_parser(model: str = "gpt-4o-mini", temperature: float = 0.2):
     You are an expert scheduling assistant. Your task is to extract the user's scheduling intent into a single, precise JSON object.
 
     **Context:**
-    * **Current Time:** {datetime.now().replace(microsecond=0).isoformat() + 'Z'}
+    * **Current Time:** {datetime.now().replace(microsecond=0).isoformat() + "Z"}
     * **User's Time Zone:** {{user_timezone}}
     * **Known Contacts:** {friends_context}
 

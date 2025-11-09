@@ -51,13 +51,15 @@ def load_user_context(
         )
 
         for event in events_result.get("events", []):
-            upcoming_events.append({
-                "event_id": event["event_id"],
-                "summary": event["summary"],
-                "start": event["start"],
-                "end": event["end"],
-                "attendees": event.get("attendees", []),
-            })
+            upcoming_events.append(
+                {
+                    "event_id": event["event_id"],
+                    "summary": event["summary"],
+                    "start": event["start"],
+                    "end": event["end"],
+                    "attendees": event.get("attendees", []),
+                }
+            )
 
     return {
         "user_id": user_id,
@@ -148,9 +150,11 @@ def parse_relative_time(
         end = start + timedelta(days=7)
     elif expr_lower in ["next week"]:
         days_since_monday = current_time.weekday()
-        start = current_time.replace(hour=0, minute=0, second=0, microsecond=0) - timedelta(
-            days=days_since_monday
-        ) + timedelta(days=7)
+        start = (
+            current_time.replace(hour=0, minute=0, second=0, microsecond=0)
+            - timedelta(days=days_since_monday)
+            + timedelta(days=7)
+        )
         end = start + timedelta(days=7)
     else:
         # Default to next 7 days

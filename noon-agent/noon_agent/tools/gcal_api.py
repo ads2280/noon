@@ -215,14 +215,16 @@ def list_events_api(
 
         formatted_events = []
         for event in events:
-            formatted_events.append({
-                "event_id": event["id"],
-                "summary": event.get("summary", "No title"),
-                "start": event["start"].get("dateTime", event["start"].get("date")),
-                "end": event["end"].get("dateTime", event["end"].get("date")),
-                "attendees": [a["email"] for a in event.get("attendees", [])],
-                "calendar_id": calendar_id,
-            })
+            formatted_events.append(
+                {
+                    "event_id": event["id"],
+                    "summary": event.get("summary", "No title"),
+                    "start": event["start"].get("dateTime", event["start"].get("date")),
+                    "end": event["end"].get("dateTime", event["end"].get("date")),
+                    "attendees": [a["email"] for a in event.get("attendees", [])],
+                    "calendar_id": calendar_id,
+                }
+            )
 
         return {"events": formatted_events, "calendar_id": calendar_id}
 

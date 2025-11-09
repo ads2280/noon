@@ -14,9 +14,7 @@ SCOPES = ["https://www.googleapis.com/auth/calendar"]
 class CalendarService:
     """Manages Google Calendar API authentication and service creation."""
 
-    def __init__(
-        self, credentials_path: str = "credentials.json", token_path: str = "token.json"
-    ):
+    def __init__(self, credentials_path: str = "credentials.json", token_path: str = "token.json"):
         self.credentials_path = credentials_path
         self.token_path = token_path
         self._service = None
@@ -84,4 +82,3 @@ def get_calendar_service_from_file(
     """
     cal_service = CalendarService(credentials_path, token_path)
     return cal_service.get_service()
-

@@ -16,7 +16,9 @@ class UserBase(BaseModel):
 
     email: EmailStr
     full_name: Optional[str] = None
-    timezone: str = Field(default="UTC", description="User's timezone (e.g., 'America/Los_Angeles')")
+    timezone: str = Field(
+        default="UTC", description="User's timezone (e.g., 'America/Los_Angeles')"
+    )
 
 
 class UserCreate(UserBase):
@@ -65,11 +67,15 @@ class User(UserBase):
 class CalendarBase(BaseModel):
     """Base calendar fields."""
 
-    google_calendar_id: str = Field(..., description="Google Calendar ID (e.g., 'primary' or email)")
+    google_calendar_id: str = Field(
+        ..., description="Google Calendar ID (e.g., 'primary' or email)"
+    )
     name: str = Field(..., description="Calendar name")
     description: Optional[str] = None
     color: Optional[str] = Field(None, description="Calendar color (hex code)")
-    is_primary: bool = Field(default=False, description="Whether this is the user's primary calendar")
+    is_primary: bool = Field(
+        default=False, description="Whether this is the user's primary calendar"
+    )
 
 
 class CalendarCreate(CalendarBase):

@@ -116,11 +116,13 @@ def load_user_context_from_db(user_id: str) -> UserContext:
     friends_db = load_user_friends(user_id)
     friends_list: List[FriendSchema] = []
     for friend in friends_db:
-        friends_list.append({
-            "name": friend.name,
-            "email": friend.email,
-            "calendar_id": friend.google_calendar_id or friend.email,
-        })
+        friends_list.append(
+            {
+                "name": friend.name,
+                "email": friend.email,
+                "calendar_id": friend.google_calendar_id or friend.email,
+            }
+        )
 
     # Fetch upcoming events from Google Calendar
     upcoming_events = []
@@ -140,13 +142,15 @@ def load_user_context_from_db(user_id: str) -> UserContext:
         )
 
         for event in events_result.get("events", []):
-            upcoming_events.append({
-                "event_id": event["event_id"],
-                "summary": event["summary"],
-                "start": event["start"],
-                "end": event["end"],
-                "attendees": event.get("attendees", []),
-            })
+            upcoming_events.append(
+                {
+                    "event_id": event["event_id"],
+                    "summary": event["summary"],
+                    "start": event["start"],
+                    "end": event["end"],
+                    "attendees": event.get("attendees", []),
+                }
+            )
 
     except Exception as e:
         # If we can't fetch events, continue with empty list
@@ -167,7 +171,10 @@ def load_user_context_from_db(user_id: str) -> UserContext:
 
 
 def update_user_tokens(
-    user_id: str, access_token: str, refresh_token: Optional[str] = None, expiry: Optional[datetime] = None
+    user_id: str,
+    access_token: str,
+    refresh_token: Optional[str] = None,
+    expiry: Optional[datetime] = None,
 ) -> None:
     """
     Update user's Google OAuth tokens in database.
@@ -275,10 +282,7 @@ def sync_user_calendars_from_google(user_id: str, access_token: str) -> List[Cal
                 "updated_at": datetime.utcnow().isoformat(),
             }
             result = (
-                db.table("calendars")
-                .update(update_data)
-                .eq("id", existing.data[0]["id"])
-                .execute()
+                db.table("calendars").update(update_data).eq("id", existing.data[0]["id"]).execute()
             )
             synced_calendars.append(Calendar(**result.data[0]))
         else:

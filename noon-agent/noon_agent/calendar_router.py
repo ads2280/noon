@@ -140,7 +140,10 @@ def route_intent_node(state: CalendarAgentState) -> Dict[str, Any]:
     # Build context for the LLM
     upcoming_summary = (
         "\n".join(
-            [f"- {e['summary']} at {e['start']}" for e in state["user_context"]["upcoming_events"][:5]]
+            [
+                f"- {e['summary']} at {e['start']}"
+                for e in state["user_context"]["upcoming_events"][:5]
+            ]
         )
         if state["user_context"]["upcoming_events"]
         else "None"
@@ -271,4 +274,7 @@ def route_to_action(
 
 def acknowledge_node(state: CalendarAgentState) -> Dict[str, Any]:
     """Simple acknowledgment node for greetings."""
-    return {**state, "response": "Hello! I can help you with your calendar. What would you like to do?"}
+    return {
+        **state,
+        "response": "Hello! I can help you with your calendar. What would you like to do?",
+    }

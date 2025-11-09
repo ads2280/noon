@@ -43,12 +43,14 @@ def search_friend(
         score = fuzzy_match_score(query, friend["name"])
 
         if score >= threshold:
-            matches.append({
-                "name": friend["name"],
-                "email": friend["email"],
-                "calendar_id": friend["calendar_id"],
-                "confidence": round(score, 2),
-            })
+            matches.append(
+                {
+                    "name": friend["name"],
+                    "email": friend["email"],
+                    "calendar_id": friend["calendar_id"],
+                    "confidence": round(score, 2),
+                }
+            )
 
             if score == 1.0:
                 exact_match = True
@@ -91,13 +93,15 @@ def resolve_attendees(
         elif len(result["matches"]) == 1 or result["exact_match"]:
             # Single match or exact match - resolve it
             match = result["matches"][0]
-            resolved.append({
-                "input_name": name,
-                "resolved_name": match["name"],
-                "email": match["email"],
-                "calendar_id": match["calendar_id"],
-                "confidence": match["confidence"],
-            })
+            resolved.append(
+                {
+                    "input_name": name,
+                    "resolved_name": match["name"],
+                    "email": match["email"],
+                    "calendar_id": match["calendar_id"],
+                    "confidence": match["confidence"],
+                }
+            )
         else:
             # Multiple matches - ambiguous
             ambiguous.append({"name": name, "possible_matches": result["matches"]})
