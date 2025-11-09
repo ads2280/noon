@@ -206,7 +206,7 @@ class GoogleCalendarService:
                 "Link a Google account before requesting calendar data."
             )
 
-        user_calendars = self._supabase.list_calendars(user_id)
+        user_calendars = self._client_factory.list_calendars(user_id)
         calendars_by_id = {
             calendar["google_calendar_id"]: calendar for calendar in user_calendars
         }
