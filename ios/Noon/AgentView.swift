@@ -23,7 +23,11 @@ struct AgentView: View {
                 .ignoresSafeArea()
 
             VStack(spacing: 24) {
-                ScheduleView(date: Date())
+                ScheduleView(
+                    date: Date(),
+                    highlightEventID: "mock-event-lunch",
+                    destructiveEventID: "mock-event-product-review"
+                )
                     .padding(.horizontal, 24)
                     .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
 

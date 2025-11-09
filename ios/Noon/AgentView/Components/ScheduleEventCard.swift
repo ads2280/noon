@@ -11,6 +11,7 @@ struct ScheduleEventCard: View {
     enum Style {
         case standard
         case highlight
+        case destructive
     }
 
     let title: String
@@ -27,6 +28,8 @@ struct ScheduleEventCard: View {
             return AnyShapeStyle(
                 ColorPalette.Semantic.highlightBackground
             )
+        case .destructive:
+            return AnyShapeStyle(ColorPalette.Surface.destructiveMuted)
         }
     }
 
@@ -38,6 +41,8 @@ struct ScheduleEventCard: View {
             return AnyShapeStyle(
                 ColorPalette.Gradients.highlightBorder
             )
+        case .destructive:
+            return AnyShapeStyle(ColorPalette.Text.secondary.opacity(0.6))
         }
     }
 
@@ -47,6 +52,8 @@ struct ScheduleEventCard: View {
             return Color.black.opacity(0.15)
         case .highlight:
             return ColorPalette.Semantic.primary.opacity(0.25)
+        case .destructive:
+            return Color.black.opacity(0.18)
         }
     }
 
@@ -57,11 +64,13 @@ struct ScheduleEventCard: View {
                 VStack(alignment: .leading, spacing: 4) {
                     Text(title)
                         .font(.caption.weight(.semibold))
-                        .foregroundStyle(ColorPalette.Text.primary)
+                        .foregroundStyle(textColor)
+                        .strikethrough(style == .destructive, color: strikeColor)
                     if showTimeRange {
                         Text(timeRange)
                             .font(.caption.weight(.medium))
-                            .foregroundStyle(ColorPalette.Text.secondary.opacity(0.75))
+                            .foregroundStyle(secondaryTextColor)
+                            .strikethrough(style == .destructive, color: strikeColor)
                     }
                 }
                 .frame(maxWidth: .infinity, alignment: .leading)
@@ -73,6 +82,35 @@ struct ScheduleEventCard: View {
                     .stroke(borderStyle, lineWidth: 1)
             }
             .shadow(color: shadowColor, radius: 14, x: 0, y: 10)
+    }
+}
+
+private extension ScheduleEventCard {
+    var textColor: Color {
+        switch style {
+        case .standard, .highlight:
+            return ColorPalette.Text.primary
+        case .destructive:
+            return ColorPalette.Text.primary.opacity(0.55)
+        }
+    }
+
+    var secondaryTextColor: Color {
+        switch style {
+        case .standard, .highlight:
+            return ColorPalette.Text.secondary.opacity(0.75)
+        case .destructive:
+            return ColorPalette.Text.secondary.opacity(0.5)
+        }
+    }
+
+    var strikeColor: Color {
+        switch style {
+        case .standard, .highlight:
+            return .clear
+        case .destructive:
+            return ColorPalette.Text.secondary.opacity(0.7)
+        }
     }
 }
 
@@ -93,7 +131,7 @@ struct ScheduleEventCard_Previews: PreviewProvider {
                 timeRange: "11:00 AM – 12:15 PM",
                 showTimeRange: true,
                 cornerRadius: 12,
-                style: .standard
+                style: .destructive
             )
             .frame(height: 80)
 

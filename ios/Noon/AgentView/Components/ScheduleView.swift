@@ -9,9 +9,22 @@ import SwiftUI
 
 struct ScheduleView: View {
     let date: Date
+    let highlightEventID: String?
+    let destructiveEventID: String?
 
     private let hours = Array(0..<24)
-    private let mockEvents = MockEvent.sampleEvents
+    private let events: [CalendarEvent]
+
+    init(
+        date: Date,
+        highlightEventID: String? = nil,
+        destructiveEventID: String? = nil
+    ) {
+        self.date = date
+        self.highlightEventID = highlightEventID
+        self.destructiveEventID = destructiveEventID
+        self.events = ScheduleView.makeMockEvents(for: date)
+    }
 
     var body: some View {
         GeometryReader { geometry in
@@ -97,23 +110,24 @@ struct ScheduleView: View {
                 }
             }
 
-            ForEach(mockEvents) { event in
-                let eventHeight = hourHeight * CGFloat(event.durationHours)
-                let topPosition = timelineTopInset + hourHeight * CGFloat(event.startHour)
-                let centerY = topPosition + eventHeight / 2
-                let eventWidth = max(gridWidth - eventHorizontalInset * 2, 0)
-                let centerX = gridLeading + gridWidth / 2
-                let shouldShowTimeRange = event.durationHours >= 1
+            ForEach(events) { event in
+                if let layout = layoutInfo(for: event) {
+                    let eventHeight = hourHeight * CGFloat(layout.durationHours)
+                    let topPosition = timelineTopInset + hourHeight * CGFloat(layout.startHour)
+                    let centerY = topPosition + eventHeight / 2
+                    let eventWidth = max(gridWidth - eventHorizontalInset * 2, 0)
+                    let centerX = gridLeading + gridWidth / 2
 
-                ScheduleEventCard(
-                    title: event.title,
-                    timeRange: event.timeRange,
-                    showTimeRange: shouldShowTimeRange,
-                    cornerRadius: cornerRadius,
-                    style: event.style
-                )
-                .frame(width: eventWidth, height: eventHeight, alignment: .top)
-                .position(x: centerX, y: centerY)
+                    ScheduleEventCard(
+                        title: layout.title,
+                        timeRange: layout.timeRange,
+                        showTimeRange: layout.shouldShowTimeRange,
+                        cornerRadius: cornerRadius,
+                        style: layout.style
+                    )
+                    .frame(width: eventWidth, height: eventHeight, alignment: .top)
+                    .position(x: centerX, y: centerY)
+                }
             }
         }
         .frame(width: gridWidth + gridLeading * 2, height: gridHeight, alignment: .topLeading)
@@ -154,48 +168,15 @@ struct ScheduleView: View {
 }
 
 private extension ScheduleView {
-    struct MockEvent: Identifiable {
-        let id = UUID()
-        let title: String
-        let timeRange: String
+    struct EventLayout {
+        let event: CalendarEvent
         let startHour: Double
         let endHour: Double
+        let durationHours: Double
+        let title: String
+        let timeRange: String
+        let shouldShowTimeRange: Bool
         let style: ScheduleEventCard.Style
-
-        var durationHours: Double {
-            max(endHour - startHour, 0.25)
-        }
-
-        static let sampleEvents: [MockEvent] = [
-            MockEvent(
-                title: "Daily Standup",
-                timeRange: "9:00 – 9:30 AM",
-                startHour: 9.0,
-                endHour: 9.5,
-                style: .standard
-            ),
-            MockEvent(
-                title: "Product Review",
-                timeRange: "11:00 AM – 12:15 PM",
-                startHour: 11.0,
-                endHour: 12.25,
-                style: .standard
-            ),
-            MockEvent(
-                title: "Lunch with Jordan",
-                timeRange: "1:00 – 1:45 PM",
-                startHour: 13.0,
-                endHour: 13.75,
-                style: .highlight
-            ),
-            MockEvent(
-                title: "AI Strategy Session",
-                timeRange: "3:30 – 4:30 PM",
-                startHour: 15.5,
-                endHour: 16.5,
-                style: .standard
-            )
-        ]
     }
 
     static let dateFormatter: DateFormatter = {
@@ -204,10 +185,154 @@ private extension ScheduleView {
         formatter.setLocalizedDateFormatFromTemplate("E d")
         return formatter
     }()
+
+    static let timeRangeFormatter: DateFormatter = {
+        let formatter = DateFormatter()
+        formatter.locale = Locale.autoupdatingCurrent
+        formatter.timeStyle = .short
+        formatter.dateStyle = .none
+        return formatter
+    }()
+
+    static func makeMockEvents(for date: Date) -> [CalendarEvent] {
+        var calendar = Calendar.autoupdatingCurrent
+        let timeZone = TimeZone.autoupdatingCurrent
+        calendar.timeZone = timeZone
+        let timeZoneIdentifier = timeZone.identifier
+
+        func dateForHour(_ hourFraction: Double) -> Date {
+            let normalizedHour = max(0, min(23.75, hourFraction))
+            let hour = Int(normalizedHour)
+            let minutes = Int(round((normalizedHour - Double(hour)) * 60))
+            var components = calendar.dateComponents([.year, .month, .day], from: date)
+            components.hour = hour
+            components.minute = minutes
+            components.second = 0
+            components.timeZone = timeZone
+            return calendar.date(from: components) ?? date
+        }
+
+        func makeEvent(id: String, title: String, startHour: Double, endHour: Double) -> CalendarEvent {
+            let startDate = dateForHour(startHour)
+            let endDate = dateForHour(endHour)
+            let start = CalendarEvent.EventDateTime(
+                dateTime: startDate,
+                date: nil,
+                timeZone: timeZoneIdentifier
+            )
+            let end = CalendarEvent.EventDateTime(
+                dateTime: endDate,
+                date: nil,
+                timeZone: timeZoneIdentifier
+            )
+            return CalendarEvent(
+                id: id,
+                title: title,
+                start: start,
+                end: end
+            )
+        }
+
+        let events: [CalendarEvent] = [
+            makeEvent(
+                id: "mock-event-standup",
+                title: "Daily Standup",
+                startHour: 9.0,
+                endHour: 9.5
+            ),
+            makeEvent(
+                id: "mock-event-product-review",
+                title: "Product Review",
+                startHour: 11.0,
+                endHour: 12.25
+            ),
+            makeEvent(
+                id: "mock-event-lunch",
+                title: "Lunch with Jordan",
+                startHour: 13.0,
+                endHour: 13.75
+            ),
+            makeEvent(
+                id: "mock-event-ai-strategy",
+                title: "AI Strategy Session",
+                startHour: 15.5,
+                endHour: 16.5
+            )
+        ]
+
+        return events
+    }
+
+    func layoutInfo(for event: CalendarEvent) -> EventLayout? {
+        guard
+            let startDate = event.start?.dateTime,
+            let endDate = event.end?.dateTime
+        else { return nil }
+
+        let calendar = Calendar.autoupdatingCurrent
+
+        guard calendar.isDate(startDate, inSameDayAs: date) else { return nil }
+
+        let startOfDay = calendar.startOfDay(for: date)
+        let startComponents = calendar.dateComponents([.minute, .second], from: startOfDay, to: startDate)
+        let endComponents = calendar.dateComponents([.minute, .second], from: startOfDay, to: endDate)
+
+        guard
+            let startMinutes = startComponents.minute,
+            let endMinutes = endComponents.minute
+        else { return nil }
+
+        let startSeconds = Double(startComponents.second ?? 0)
+        let endSeconds = Double(endComponents.second ?? 0)
+
+        let startHour = (Double(startMinutes) + startSeconds / 60) / 60
+        let endHour = (Double(endMinutes) + endSeconds / 60) / 60
+        let duration = endHour - startHour
+
+        guard duration > 0 else { return nil }
+
+        let timeRange: String
+        if let start = event.start?.dateTime, let end = event.end?.dateTime {
+            let formattedStart = Self.timeRangeFormatter.string(from: start)
+            let formattedEnd = Self.timeRangeFormatter.string(from: end)
+            timeRange = "\(formattedStart) – \(formattedEnd)"
+        } else {
+            timeRange = ""
+        }
+
+        let title = event.title?.isEmpty == false ? event.title! : "Untitled Event"
+        let shouldShowTimeRange = duration >= 1.0
+        let isHighlighted = highlightEventID == event.id
+        let isDestructive = destructiveEventID == event.id
+
+        let style: ScheduleEventCard.Style
+        if isDestructive {
+            style = .destructive
+        } else if isHighlighted {
+            style = .highlight
+        } else {
+            style = .standard
+        }
+
+        return EventLayout(
+            event: event,
+            startHour: startHour,
+            endHour: endHour,
+            durationHours: duration,
+            title: title,
+            timeRange: timeRange,
+            shouldShowTimeRange: shouldShowTimeRange,
+            style: style
+        )
+    }
 }
 
 #Preview {
-    ScheduleView(date: Date())
+    ScheduleView(
+        date: Date(),
+        highlightEventID: "mock-event-lunch",
+        destructiveEventID: "mock-event-product-review"
+    )
         .padding()
         .frame(height: 600)
         .background(Color.black.opacity(0.9))

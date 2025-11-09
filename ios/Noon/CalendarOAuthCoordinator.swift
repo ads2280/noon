@@ -80,7 +80,7 @@ extension CalendarOAuthCoordinator: ASWebAuthenticationPresentationContextProvid
             if #available(iOS 26.0, *) {
                 fatalError("No window scene is available to present ASWebAuthenticationSession.")
             } else {
-                return ASPresentationAnchor()
+                return UIWindow(frame: UIScreen.main.bounds)
             }
         }
 
@@ -91,7 +91,7 @@ extension CalendarOAuthCoordinator: ASWebAuthenticationPresentationContextProvid
         if #available(iOS 26.0, *) {
             return ASPresentationAnchor(windowScene: selectedScene)
         } else {
-            return ASPresentationAnchor()
+            return UIWindow(frame: selectedScene.screen.bounds)
         }
     }
 }
