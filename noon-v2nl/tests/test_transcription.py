@@ -20,6 +20,16 @@ WS_URL = BASE_URL.replace("http://", "ws://").replace("https://", "wss://")
 CLIPS_DIR = Path(__file__).parent / "clips"
 CHUNK_SIZE = 8192  # 8KB chunks for streaming
 
+# Optional list of custom vocabulary terms to boost during transcription tests.
+# Populate with strings (case-sensitive) e.g. ["Noon", "Deepgram", "AI"]
+CUSTOM_VOCABULARY: List[str] = []
+
+
+def get_vocab_string() -> str:
+    """Convert the custom vocabulary list into a comma-separated string."""
+    cleaned_terms = [term.strip() for term in CUSTOM_VOCABULARY if term.strip()]
+    return ",".join(cleaned_terms)
+
 
 def find_audio_files(directory: Path) -> List[Path]:
     """Find all audio files in the given directory.
@@ -87,11 +97,12 @@ def test_rest_endpoint(audio_file: Path) -> str:
         
         with open(audio_file, "rb") as f:
             files = {"file": (audio_file.name, f, mime_type)}
-            # Optional vocabulary (comma-separated) passed as argument if provided via env for testing
-            dg_vocab = os.getenv("DEEPGRAM_VOCABULARY", "").strip()
+            # Optional vocabulary (comma-separated) passed as argument if provided via custom list
+            dg_vocab = get_vocab_string()
             data = {}
             if dg_vocab:
                 data["vocabulary"] = dg_vocab
+                print(f"   Using vocabulary: {dg_vocab}")
             
             print(f"   Uploading {audio_file.name} ({audio_file.stat().st_size / 1024:.1f} KB)...")
             response = requests.post(url, files=files, data=data, timeout=300)
@@ -157,9 +168,10 @@ async def test_websocket_endpoint(audio_file: Path) -> str:
             # Send transcribe command
             # Send start command with optional vocabulary before streaming
             start_cmd = {"action": "start"}
-            dg_vocab = os.getenv("DEEPGRAM_VOCABULARY", "").strip()
+            dg_vocab = get_vocab_string()
             if dg_vocab:
                 start_cmd["vocabulary"] = dg_vocab
+                print(f"   Using vocabulary: {dg_vocab}")
             await websocket.send(json.dumps(start_cmd))
             
             command = {
