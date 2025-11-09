@@ -334,7 +334,9 @@ def get_event_details(
             "organizer": {
                 "email": event["organizer"].get("email", ""),
                 "displayName": event["organizer"].get("displayName", ""),
-            } if event.get("organizer") else None,
+            }
+            if event.get("organizer")
+            else None,
             "event_link": event.get("htmlLink"),
             "created": event.get("created"),
             "updated": event.get("updated"),

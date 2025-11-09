@@ -145,7 +145,9 @@ def load_user_context_from_db(user_id: str) -> UserContext:
             upcoming_events.append(
                 {
                     "event_id": event["event_id"],
-                    "calendar_id": event.get("calendar_id", primary_calendar_id),  # Include calendar_id with event_id
+                    "calendar_id": event.get(
+                        "calendar_id", primary_calendar_id
+                    ),  # Include calendar_id with event_id
                     "summary": event["summary"],
                     "start": event["start"],
                     "end": event["end"],

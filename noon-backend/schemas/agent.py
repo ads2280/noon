@@ -22,14 +22,16 @@ class AgentChatResponse(BaseModel):
 
 class GetEventRequest(BaseModel):
     """Request schema for get event endpoint.
-    
+
     Note: Google Calendar event IDs are unique per calendar, not globally.
     If calendar_id is not provided, the endpoint will search across all
     user calendars (less efficient but more convenient).
     """
 
     event_id: str
-    calendar_id: Optional[str] = None  # Optional - will search all calendars if not provided
+    calendar_id: Optional[str] = (
+        None  # Optional - will search all calendars if not provided
+    )
 
 
 class GetEventResponse(BaseModel):

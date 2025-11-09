@@ -54,7 +54,9 @@ class CalendarAgentService:
         self._graph = graph
         self._load_user_context = load_user_context
 
-    def _build_agent_state(self, *, message: str, user_context: Dict[str, Any]) -> Dict[str, Any]:
+    def _build_agent_state(
+        self, *, message: str, user_context: Dict[str, Any]
+    ) -> Dict[str, Any]:
         """Build the agent state object expected by noon-agent."""
 
         access_token = user_context.get("access_token")
@@ -101,11 +103,15 @@ class CalendarAgentService:
         try:
             full_result = self._graph.invoke(state)
         except Exception as exc:
-            logger.exception("Calendar agent graph invocation failed for user %s", user_id)
+            logger.exception(
+                "Calendar agent graph invocation failed for user %s", user_id
+            )
             raise CalendarAgentError(f"Agent invocation failed: {exc}") from exc
 
         tool_name = full_result.get("action") or "read"
-        summary = full_result.get("response") or full_result.get("summary") or "No response"
+        summary = (
+            full_result.get("response") or full_result.get("summary") or "No response"
+        )
         success = full_result.get("success", True)
 
         return {
