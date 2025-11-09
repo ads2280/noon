@@ -24,18 +24,15 @@ CHUNK_SIZE = 8192  # 8KB chunks for streaming
 def find_audio_files(directory: Path) -> List[Path]:
     """Find all audio files in the given directory.
     
-    Finds common audio formats including those used by Whisperflow and Deepgram.
-    Note: OpenAI API supports: mp3, mp4, mpeg, mpga, m4a, wav, webm
-    Other formats (flac, ogg, opus, etc.) will be attempted but may fail if unsupported.
+    Finds common audio formats supported by Deepgram.
+    Deepgram supports: mp3, mp4, mpeg, mpga, m4a, wav, webm, flac, ogg, opus, aac, mp2, 3gp
     """
     if not directory.exists():
         print(f"⚠️  Directory {directory} does not exist. Creating it...")
         directory.mkdir(parents=True, exist_ok=True)
         return []
     
-    # Find all common audio formats (including Whisperflow/Deepgram formats)
-    # OpenAI officially supports: mp3, mp4, mpeg, mpga, m4a, wav, webm
-    # We'll also try: flac, ogg, opus, aac, mp2 (may need conversion)
+    # Find all common audio formats supported by Deepgram
     audio_extensions = [
         "*.mp3", "*.mp4", "*.mpeg", "*.mpga", "*.m4a", "*.wav", "*.webm",
         "*.flac", "*.ogg", "*.opus", "*.aac", "*.mp2", "*.3gp"
@@ -46,15 +43,14 @@ def find_audio_files(directory: Path) -> List[Path]:
     
     if not audio_files:
         print(f"⚠️  No audio files found in {directory}")
-        print(f"   Common formats: mp3, mp4, mpeg, mpga, m4a, wav, webm, flac, ogg, opus, aac")
-        print(f"   Note: OpenAI API officially supports: mp3, mp4, mpeg, mpga, m4a, wav, webm")
+        print(f"   Common formats: mp3, mp4, mpeg, mpga, m4a, wav, webm, flac, ogg, opus, aac, mp2, 3gp")
         print(f"   Please add audio files to {directory}")
     return sorted(audio_files)
 
 
 def test_rest_endpoint(audio_file: Path) -> str:
     """
-    Test the REST API endpoint /oai/transcribe.
+    Test the REST API endpoint /v1/transcriptions.
     
     Args:
         audio_file: Path to the audio file to transcribe
@@ -66,14 +62,13 @@ def test_rest_endpoint(audio_file: Path) -> str:
     print(f"📤 REST API Test: {audio_file.name}")
     print(f"{'='*80}")
     
-    url = f"{BASE_URL}/oai/transcribe"
+    url = f"{BASE_URL}/v1/transcriptions"
     
     try:
         # Determine MIME type based on file extension
-        # Includes formats used by Whisperflow and Deepgram
+        # Deepgram supports all these formats
         ext = audio_file.suffix.lower()
         mime_types = {
-            # OpenAI officially supported
             ".mp3": "audio/mpeg",
             ".mp4": "audio/mp4",
             ".mpeg": "audio/mpeg",
@@ -81,7 +76,6 @@ def test_rest_endpoint(audio_file: Path) -> str:
             ".m4a": "audio/mp4",
             ".wav": "audio/wav",
             ".webm": "audio/webm",
-            # Additional formats (may work or may need conversion)
             ".flac": "audio/flac",
             ".ogg": "audio/ogg",
             ".opus": "audio/opus",
@@ -90,12 +84,6 @@ def test_rest_endpoint(audio_file: Path) -> str:
             ".3gp": "audio/3gpp"
         }
         mime_type = mime_types.get(ext, "audio/mpeg")  # Default to mpeg
-        
-        # Warn if using potentially unsupported format
-        openai_supported = {".mp3", ".mp4", ".mpeg", ".mpga", ".m4a", ".wav", ".webm"}
-        if ext not in openai_supported:
-            print(f"   ⚠️  Note: {ext} may not be officially supported by OpenAI API")
-            print(f"      The API will attempt transcription, but may return an error")
         
         with open(audio_file, "rb") as f:
             files = {"file": (audio_file.name, f, mime_type)}
@@ -132,7 +120,7 @@ def test_rest_endpoint(audio_file: Path) -> str:
 
 async def test_websocket_endpoint(audio_file: Path) -> str:
     """
-    Test the WebSocket endpoint /oai/stream.
+    Test the WebSocket endpoint /v1/transcriptions/stream.
     
     Args:
         audio_file: Path to the audio file to transcribe
@@ -144,7 +132,7 @@ async def test_websocket_endpoint(audio_file: Path) -> str:
     print(f"🌐 WebSocket Stream Test: {audio_file.name}")
     print(f"{'='*80}")
     
-    ws_url = f"{WS_URL}/oai/stream"
+    ws_url = f"{WS_URL}/v1/transcriptions/stream"
     full_transcription = ""
     
     try:

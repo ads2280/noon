@@ -31,8 +31,8 @@ app = FastAPI(
     Microservice that takes in audio and returns natural language strings using Deepgram transcription.
     
     Endpoints:
-    - REST: POST /oai/transcribe
-    - WebSocket: WS /oai/stream
+    - REST: POST /v1/transcriptions
+    - WebSocket: WS /v1/transcriptions/stream
     """,
     version="0.2.0"
 )
@@ -62,8 +62,8 @@ async def root():
         "service": "noon-v2nl",
         "provider": "deepgram",
         "endpoints": {
-            "rest": "/oai/transcribe",
-            "websocket": "/oai/stream"
+            "rest": "/v1/transcriptions",
+            "websocket": "/v1/transcriptions/stream"
         }
     }
 
@@ -108,7 +108,7 @@ def _extract_transcript_from_deepgram(json_payload: dict) -> str:
         return ""
 
 
-@app.post("/oai/transcribe", response_model=TranscriptionResponse)
+@app.post("/v1/transcriptions", response_model=TranscriptionResponse)
 async def transcribe_audio(
     file: UploadFile = File(...),
     vocabulary: Optional[str] = Query(None, description="Comma-separated custom vocabulary terms"),
@@ -176,7 +176,7 @@ async def transcribe_audio(
         raise HTTPException(status_code=500, detail=f"Error transcribing audio: {str(e)}")
 
 
-@app.websocket("/oai/stream")
+@app.websocket("/v1/transcriptions/stream")
 async def websocket_transcribe(websocket: WebSocket):
     """
     WebSocket endpoint that proxies audio to Deepgram Live and streams back
