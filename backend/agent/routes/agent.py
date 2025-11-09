@@ -1,13 +1,15 @@
 """Agent endpoint for invoking the LangGraph calendar agent."""
 
 import logging
+
 from fastapi import APIRouter, Depends, HTTPException, UploadFile, File
 from langgraph_sdk import get_client
 
 from schemas.user import AuthenticatedUser
-from schemas.agent_response import AgentResponse
+from schemas.agent_response import AgentResponse, ErrorResponse
+from schemas.confirm_action import ConfirmActionRequest
 from dependencies import get_current_user
-from services import supabase_client
+from services import supabase_client, agent_calendar_service
 from config import get_settings
 from v2nl import TranscriptionService
 
@@ -127,4 +129,33 @@ async def agent_action(
         raise HTTPException(
             status_code=500,
             detail=f"Failed to invoke agent: {str(e)}"
+        )
+
+
+@router.post("/confirm-action", response_model=AgentResponse)
+async def confirm_action(
+    payload: ConfirmActionRequest,
+    current_user: AuthenticatedUser = Depends(get_current_user),
+):
+    """
+    Confirm and execute a calendar action based on the agent's request.
+    
+    Handles write operations that require confirmation:
+    - create-event: Create a new event
+    - update-event: Update an existing event
+    - delete-event: Delete an event
+    """
+    try:
+        result = await agent_calendar_service.confirm_calendar_action(
+            user_id=current_user.id,
+            payload=payload,
+        )
+        return result
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Failed to confirm action: {e}", exc_info=True)
+        return ErrorResponse(
+            success="false",
+            message=f"Failed to confirm action: {str(e)}"
         )

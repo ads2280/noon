@@ -6,14 +6,14 @@ from pydantic import BaseModel, ConfigDict, Field
 
 
 class ShowEventMetadata(BaseModel):
-    model_config = ConfigDict(populate_by_name=True, extra="forbid")
+    model_config = ConfigDict(populate_by_name=True, extra="allow")
 
     event_id: str = Field(alias="event-id")
     calendar_id: str = Field(alias="calendar-id")
 
 
 class ShowScheduleMetadata(BaseModel):
-    model_config = ConfigDict(populate_by_name=True, extra="forbid")
+    model_config = ConfigDict(populate_by_name=True, extra="allow")
 
     start_date: str = Field(alias="start-date")
     end_date: str = Field(alias="end-date")
