@@ -123,12 +123,14 @@ private extension CalendarsView {
 
     @ViewBuilder
     var content: some View {
-        if viewModel.isLoading && viewModel.accounts.isEmpty {
-            loadingState
-        } else if let message = viewModel.errorMessage {
+        if let message = viewModel.errorMessage {
             errorState(message: message)
         } else if viewModel.accounts.isEmpty {
+            if viewModel.isLoading {
+                EmptyView()
+            } else {
             emptyState
+            }
         } else {
             accountsList
         }
@@ -136,23 +138,6 @@ private extension CalendarsView {
         connectInlineButton
             .padding(.top, 4)
     }
-
-    var loadingState: some View {
-        VStack(spacing: 16) {
-            ProgressView()
-                .progressViewStyle(.circular)
-                .tint(ColorPalette.Semantic.secondary)
-            Text("Loading calendar accounts…")
-                .foregroundStyle(ColorPalette.Text.secondary)
-        }
-        .frame(maxWidth: .infinity)
-        .padding()
-        .background(
-            RoundedRectangle(cornerRadius: 20)
-                .fill(ColorPalette.Surface.elevated.opacity(0.6))
-        )
-    }
-
     func errorState(message: String) -> some View {
         VStack(alignment: .leading, spacing: 12) {
             Label("Unable to load calendars", systemImage: "exclamationmark.triangle.fill")
