@@ -14,14 +14,21 @@ class AuthenticatedUser(BaseModel):
     phone: Optional[str] = None
 
 
-def get_current_bearer_token(authorization: str = Header(..., alias="Authorization")) -> str:
+def get_current_bearer_token(
+    authorization: str = Header(..., alias="Authorization"),
+) -> str:
     scheme, _, token = authorization.partition(" ")
     if scheme.lower() != "bearer" or not token:
-        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid authorization header")
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Invalid authorization header",
+        )
     return token
 
 
-def get_current_user(token: str = Depends(get_current_bearer_token)) -> AuthenticatedUser:
+def get_current_user(
+    token: str = Depends(get_current_bearer_token),
+) -> AuthenticatedUser:
     settings = get_settings()
     if not settings.supabase_jwt_secret:
         raise HTTPException(
@@ -31,11 +38,17 @@ def get_current_user(token: str = Depends(get_current_bearer_token)) -> Authenti
     try:
         payload = jwt.decode(token, settings.supabase_jwt_secret, algorithms=["HS256"])
     except jwt.PyJWTError as exc:
-        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid or expired token") from exc
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid or expired token"
+        ) from exc
 
     user_id = payload.get("sub")
     if not user_id:
-        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Token missing subject claim")
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Token missing subject claim",
+        )
 
-    return AuthenticatedUser(id=user_id, phone=payload.get("phone_number") or payload.get("phone"))
-
+    return AuthenticatedUser(
+        id=user_id, phone=payload.get("phone_number") or payload.get("phone")
+    )

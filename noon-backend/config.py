@@ -50,4 +50,3 @@ def get_settings() -> Settings:
         supabase_anon_key=_get_env("SUPABASE_ANON_KEY"),
         supabase_jwt_secret=_get_env("SUPABASE_JWT_SECRET"),
     )
-

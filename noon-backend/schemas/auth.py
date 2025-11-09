@@ -33,4 +33,3 @@ class OTPSession(BaseModel):
 class OTPVerifyResponse(BaseModel):
     session: OTPSession
     user: UserProfile
-
