@@ -156,6 +156,55 @@ class GoogleCalendarWrapper:
         )
         return await self._execute_request(request)
 
+    async def search_events(
+        self,
+        *,
+        query: str,
+        calendar_id: str = "primary",
+        time_min: Optional[str] = None,
+        time_max: Optional[str] = None,
+        max_results: int = 250,
+    ) -> Dict[str, Any]:
+        """
+        Search for events using a free text query string.
+        
+        The query string searches across multiple event fields:
+        - summary (title)
+        - description
+        - location
+        - attendee's displayName and email
+        - organizer's displayName and email
+        - workingLocationProperties (office location, desk, label, custom location)
+        
+        Also matches predefined keywords for working location, out-of-office, and focus-time events.
+        
+        Args:
+            query: Free text search terms to find matching events
+            calendar_id: Calendar ID to search in (default: "primary")
+            time_min: Minimum time for events (ISO 8601 format, optional)
+            time_max: Maximum time for events (ISO 8601 format, optional)
+            max_results: Maximum number of events to return (default: 250)
+            
+        Returns:
+            Dictionary containing the events list response from Google Calendar API
+        """
+        service = self._get_service()
+        params = {
+            "calendarId": calendar_id,
+            "q": query,
+            "maxResults": max_results,
+            "singleEvents": True,
+            "orderBy": "startTime",
+        }
+        
+        if time_min:
+            params["timeMin"] = time_min
+        if time_max:
+            params["timeMax"] = time_max
+            
+        request = service.events().list(**params)
+        return await self._execute_request(request)
+
     async def create_event(
         self,
         *,
