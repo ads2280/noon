@@ -3,6 +3,7 @@ from __future__ import annotations
 from functools import lru_cache
 from typing import Any, Dict, Iterable, List, Tuple
 
+import jwt
 from postgrest import APIError
 from supabase import Client, create_client
 
@@ -95,6 +96,54 @@ def ensure_user_profile(user: Dict[str, Any], phone: str) -> Dict[str, Any]:
         raise SupabaseStorageError(exc.message) from exc
 
     return result.data[0] if result.data else payload
+
+
+async def get_user_from_token(access_token: str) -> Dict[str, Any]:
+    """
+    Validate JWT access token and retrieve user information from database.
+
+    Args:
+        access_token: Supabase JWT access token
+
+    Returns:
+        User dictionary with id, phone, created_at, updated_at
+
+    Raises:
+        SupabaseAuthError: If token is invalid, expired, or user not found
+    """
+    settings = get_settings()
+
+    if not settings.supabase_jwt_secret:
+        raise SupabaseAuthError("JWT secret not configured")
+
+    try:
+        # Decode and validate JWT token
+        decoded = jwt.decode(
+            access_token,
+            settings.supabase_jwt_secret,
+            algorithms=["HS256"],
+            audience="authenticated",
+        )
+        user_id = decoded.get("sub")
+        if not user_id:
+            raise SupabaseAuthError("Invalid token: missing user ID")
+    except jwt.ExpiredSignatureError:
+        raise SupabaseAuthError("Token has expired")
+    except jwt.InvalidTokenError as exc:
+        raise SupabaseAuthError(f"Invalid token: {str(exc)}") from exc
+
+    # Fetch user from database
+    client = get_service_client()
+    try:
+        result = client.table("users").select("*").eq("id", user_id).execute()
+    except APIError as exc:
+        raise SupabaseStorageError(f"Failed to fetch user: {exc.message}") from exc
+
+    if not result.data:
+        raise SupabaseAuthError("User not found")
+
+    user = result.data[0]
+    return user
 
 
 def list_google_accounts(user_id: str) -> List[Dict[str, Any]]:
