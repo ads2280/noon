@@ -138,6 +138,37 @@ async def exchange_code_for_tokens(code: str) -> GoogleTokens:
     )
 
 
+async def refresh_access_token(refresh_token: str) -> GoogleTokens:
+    settings = get_settings()
+    payload = {
+        "client_id": settings.google_client_id,
+        "client_secret": settings.google_client_secret,
+        "refresh_token": refresh_token,
+        "grant_type": "refresh_token",
+    }
+    async with httpx.AsyncClient(timeout=15.0) as client:
+        response = await client.post(
+            TOKEN_ENDPOINT, data=payload, headers={"Accept": "application/json"}
+        )
+    if response.status_code != httpx.codes.OK:
+        raise GoogleOAuthError(
+            f"Token refresh failed with status {response.status_code}: {response.text}"
+        )
+    data = response.json()
+    access_token = data.get("access_token")
+    if not access_token:
+        raise GoogleOAuthError("Token refresh response did not include an access token.")
+
+    return GoogleTokens(
+        access_token=access_token,
+        refresh_token=data.get("refresh_token"),
+        expires_in=data.get("expires_in"),
+        scope=data.get("scope", ""),
+        token_type=data.get("token_type", ""),
+        id_token=data.get("id_token"),
+    )
+
+
 async def fetch_profile(access_token: str) -> GoogleProfile:
     headers = {"Authorization": f"Bearer {access_token}", "Accept": "application/json"}
     async with httpx.AsyncClient(timeout=15.0) as client:

@@ -1,13 +1,20 @@
 # Noon
+```
+   _   _   .-----.   .-----.  _   _
+  | \ | |  / 12 ^ \ / 12 ^ \ | \ | |
+  |  \| | |  \ |  ||  | /  | |  \| |
+  | |\  | |  / o  ||  o \  | | |\  |
+  |_| \_|  \__6__/  \__6__/  |_| \_|
+  it's time, but it's really simple.
+```
 
-> built by a chronically reflective student who can't stop thinking about how we trade slices of our lives for calendar blocks.
+> built by chronically reflective students who can't stop thinking about how we trade slices of our lives for calendar blocks.
 
-Noon is a time-first assistant: a SwiftUI app, a FastAPI backend, an LLM calendar agent, a Supabase brain, and a Deepgram-powered transcription sidekick. Every folder here is a piece of the same argument—that better tooling can make our days feel intentional instead of reactionary.
+Noon is a time-first assistant: a SwiftUI app, a FastAPI backend, an LLM calendar agent, a Supabase brain, and a Deepgram-powered transcription sidekick. Every folder here is a piece of the same argument — that better tooling can make our days feel intentional instead of reactionary.
 
 ## Why This Exists
 - Calendars hide the why behind events; Noon tries to keep context attached to scheduling.
 - Agents are powerful, but only if they can hit production-grade APIs (Google Calendar, Supabase auth, Deepgram) without drama.
-- Students (hi) need something that fits between “hackable project” and “ship it to friends tomorrow.” This repo aims to be both.
 
 ## Repo Atlas
 
@@ -26,7 +33,7 @@ Noon is a time-first assistant: a SwiftUI app, a FastAPI backend, an LLM calenda
 3. **Agent chooses a calendar tool.** Create/update/list/delete payloads are validated (see `noon-agent/main.py`) before touching Google Calendar.
 4. **State is synced.** Supabase tracks users, phone-auth sessions, and linked Google accounts; the backend enforces all that.
 
-Everything is modular on purpose—you can iterate on the agent without touching Swift, and vice versa.
+Everything is modular on purpose — you can iterate on the agent without touching Swift, and vice versa.
 
 ## What Noon Actually Does
 - **Transcribes intent**: the iOS mic hands raw audio to `noon-v2nl`, which boosts key vocabulary and returns articulate transcripts via Deepgram.
