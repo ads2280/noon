@@ -11,95 +11,101 @@ import Foundation
 
 @MainActor
 final class AgentAudioRecorder: NSObject, ObservableObject {
-    enum RecorderState {
+    enum RecorderState: Equatable {
         case idle
         case preparing
         case recording(startedAt: Date)
     }
 
-    private let audioEngine = AVAudioEngine()
-    private let mixerNode = AVAudioMixerNode()
+    struct Recording {
+        let fileURL: URL
+        let duration: TimeInterval
+    }
 
-    private var bufferData = Data()
-    private var activeFormat: AVAudioFormat?
+    enum RecordingError: Error {
+        case permissionDenied
+        case noAudioCaptured
+        case failedToCreateRecorder
+    }
+
     @Published private(set) var state: RecorderState = .idle
 
-    override init() {
-        super.init()
-        audioEngine.attach(mixerNode)
-    }
+    private var audioRecorder: AVAudioRecorder?
+    private var activeRecordingURL: URL?
 
     func startRecording() async throws {
         guard case .idle = state else { return }
 
-        try await requestPermissionIfNeeded()
+        state = .preparing
 
-        let session = AVAudioSession.sharedInstance()
-        try session.setCategory(.playAndRecord, mode: .default, options: [.mixWithOthers, .defaultToSpeaker])
-        try session.setActive(true, options: .notifyOthersOnDeactivation)
+        do {
+            try await requestPermissionIfNeeded()
 
-        bufferData.removeAll(keepingCapacity: true)
+            let session = AVAudioSession.sharedInstance()
+            try session.setCategory(.playAndRecord, mode: .spokenAudio, options: [.defaultToSpeaker, .duckOthers])
+            try session.setActive(true, options: .notifyOthersOnDeactivation)
 
-        let inputNode = audioEngine.inputNode
-        let hardwareFormat = inputNode.inputFormat(forBus: 0)
+            let tempURL = FileManager.default.temporaryDirectory
+                .appendingPathComponent(UUID().uuidString)
+                .appendingPathExtension("wav")
 
-        let preferredFormat = AVAudioFormat(
-            commonFormat: hardwareFormat.commonFormat,
-            sampleRate: hardwareFormat.sampleRate,
-            channels: 1,
-            interleaved: hardwareFormat.isInterleaved
-        ) ?? hardwareFormat
+            let settings: [String: Any] = [
+                AVFormatIDKey: kAudioFormatLinearPCM,
+                AVSampleRateKey: 16_000,
+                AVNumberOfChannelsKey: 1,
+                AVLinearPCMBitDepthKey: 16,
+                AVLinearPCMIsFloatKey: false,
+                AVLinearPCMIsBigEndianKey: false
+            ]
 
-        audioEngine.disconnectNodeInput(mixerNode)
-        audioEngine.connect(inputNode, to: mixerNode, format: preferredFormat)
-        activeFormat = preferredFormat
-
-        mixerNode.installTap(onBus: 0, bufferSize: 2048, format: preferredFormat) { [weak self] buffer, _ in
-            guard let strongSelf = self else { return }
-            guard let channelData = buffer.floatChannelData?.pointee else { return }
-
-            let frameLength = Int(buffer.frameLength)
-            let captured = Data(bytes: channelData, count: frameLength * MemoryLayout<Float>.size)
-
-            Task { @MainActor in
-                strongSelf.bufferData.append(captured)
+            guard let recorder = try? AVAudioRecorder(url: tempURL, settings: settings) else {
+                throw RecordingError.failedToCreateRecorder
             }
-        }
 
-        try audioEngine.start()
-        state = .recording(startedAt: Date())
+            recorder.isMeteringEnabled = true
+            recorder.delegate = self
+            recorder.prepareToRecord()
+            recorder.record()
+
+            audioRecorder = recorder
+            activeRecordingURL = tempURL
+            state = .recording(startedAt: Date())
+        } catch {
+            audioRecorder?.stop()
+            audioRecorder = nil
+            activeRecordingURL = nil
+            state = .idle
+            throw error
+        }
     }
 
-    func stopRecording() async throws -> RecordedSample? {
-        guard case let .recording(startedAt) = state else {
-            return nil
-        }
+    func stopRecording() async throws -> Recording? {
+        guard case let .recording(startedAt) = state else { return nil }
 
-        audioEngine.stop()
-        mixerNode.removeTap(onBus: 0)
-        audioEngine.disconnectNodeInput(mixerNode)
+        audioRecorder?.stop()
 
         let session = AVAudioSession.sharedInstance()
         try? session.setActive(false, options: .notifyOthersOnDeactivation)
 
+        let recordedURL = activeRecordingURL
+        audioRecorder = nil
+        activeRecordingURL = nil
         state = .idle
 
-        guard bufferData.isEmpty == false else {
+        guard let url = recordedURL else {
             throw RecordingError.noAudioCaptured
         }
 
-        let sample = RecordedSample(
-            data: bufferData,
-            format: activeFormat ?? audioEngine.inputNode.inputFormat(forBus: 0),
-            duration: Date().timeIntervalSince(startedAt)
-        )
+        guard FileManager.default.fileExists(atPath: url.path) else {
+            throw RecordingError.noAudioCaptured
+        }
 
-        bufferData.removeAll(keepingCapacity: true)
-        activeFormat = nil
-
-        return sample
+        let duration = Date().timeIntervalSince(startedAt)
+        return Recording(fileURL: url, duration: duration)
     }
 }
+
+extension AgentAudioRecorder: AVAudioRecorderDelegate {}
 
 extension AgentAudioRecorder {
     @MainActor
@@ -135,17 +141,6 @@ extension AgentAudioRecorder {
                 throw RecordingError.permissionDenied
             }
         }
-    }
-
-    struct RecordedSample {
-        let data: Data
-        let format: AVAudioFormat
-        let duration: TimeInterval
-    }
-
-    enum RecordingError: Error {
-        case permissionDenied
-        case noAudioCaptured
     }
 }
 

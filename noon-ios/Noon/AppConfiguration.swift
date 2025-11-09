@@ -5,6 +5,7 @@
 //  Created by GPT-5 Codex on 11/9/25.
 //
 
+import Combine
 import Foundation
 
 enum AppConfiguration {

@@ -8,6 +8,9 @@
 import SwiftUI
 
 struct AgentView: View {
+    @StateObject private var viewModel = AgentViewModel()
+    @State private var isPressingMic = false
+
     @EnvironmentObject private var authViewModel: AuthViewModel
     @State private var isLoading = false
     @State private var agentReply: String?
@@ -37,7 +40,41 @@ struct AgentView: View {
                     .frame(height: 24)
 
                 microphoneButton
+                statusLabel
             }
+        }
+    }
+
+    private var agentResponseCard: some View {
+        VStack(spacing: 12) {
+            if let reply = agentReply {
+                Text(reply)
+                    .font(.title3.weight(.semibold))
+                    .foregroundStyle(ColorPalette.Text.primary)
+                    .multilineTextAlignment(.leading)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+            } else {
+                Text("Tap the mic to ask Noon something.")
+                    .font(.title3.weight(.semibold))
+                    .foregroundStyle(ColorPalette.Text.secondary)
+                    .multilineTextAlignment(.leading)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+            }
+
+            if let message = errorMessage {
+                Text(message)
+                    .font(.footnote.weight(.medium))
+                    .foregroundStyle(ColorPalette.Semantic.warning)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+            }
+        }
+        .padding(24)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(ColorPalette.Surface.elevated.opacity(0.9))
+        .clipShape(RoundedRectangle(cornerRadius: 28, style: .continuous))
+        .overlay {
+            RoundedRectangle(cornerRadius: 28, style: .continuous)
+                .stroke(ColorPalette.Surface.overlay.opacity(0.2), lineWidth: 1)
         }
     }
 
@@ -76,9 +113,7 @@ struct AgentView: View {
 
     private var microphoneButton: some View {
         Button {
-            Task {
-                await triggerAgentQuery()
-            }
+            // Intentionally empty; gesture handles interaction
         } label: {
             Capsule()
                 .fill(ColorPalette.Gradients.primary)
@@ -102,9 +137,77 @@ struct AgentView: View {
                 }
                 .frame(maxWidth: .infinity)
         }
+        .scaleEffect(viewModel.isRecording ? 1.05 : 1.0)
+        .opacity(viewModel.isRecording ? 0.85 : 1.0)
         .buttonStyle(.plain)
-        .disabled(isLoading)
+        .onLongPressGesture(
+            minimumDuration: 0,
+            maximumDistance: 80,
+            pressing: { pressing in
+                if pressing && isPressingMic == false {
+                    isPressingMic = true
+                    viewModel.startRecording()
+                } else if pressing == false && isPressingMic {
+                    isPressingMic = false
+                    viewModel.stopRecordingAndTranscribe()
+                }
+            },
+            perform: {}
+        )
         .padding(.bottom, 20)
+    }
+
+    private var statusLabel: some View {
+        Group {
+            if let message = statusMessage {
+                Text(message)
+                    .foregroundStyle(statusForegroundStyle)
+                    .multilineTextAlignment(statusAlignment)
+                    .font(.system(size: 16, weight: .medium))
+                    .frame(maxWidth: .infinity)
+                    .padding(.horizontal, 32)
+                    .padding(.bottom, 32)
+            } else {
+                Color.clear
+                    .frame(height: 32)
+                    .padding(.bottom, 32)
+            }
+        }
+    }
+
+    private var statusMessage: String? {
+        switch viewModel.displayState {
+        case .idle:
+            return nil
+        case .recording:
+            return "Listening..."
+        case .uploading:
+            return "Transcribing…"
+        case .completed, .failed:
+            return nil
+        }
+    }
+
+    private var statusForegroundStyle: some ShapeStyle {
+        switch viewModel.displayState {
+        case .idle, .uploading:
+            return ColorPalette.Text.secondary
+        case .recording:
+            return ColorPalette.Semantic.primary
+        case .completed:
+            return ColorPalette.Text.primary
+        case .failed:
+            return ColorPalette.Semantic.destructive
+        }
+    }
+
+    private var statusAlignment: TextAlignment {
+        switch viewModel.displayState {
+        case .completed, .failed:
+            return .center
+        default:
+            return .leading
+        }
     }
 
     private func triggerAgentQuery() async {
