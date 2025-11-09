@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from functools import lru_cache
-from typing import Any, Dict, List, Tuple
+from typing import Any, Dict, Iterable, List, Tuple
 
 from postgrest import APIError
 from supabase import Client, create_client
@@ -161,3 +161,62 @@ def delete_google_account(user_id: str, account_id: str) -> None:
 
     if not response.data:
         raise SupabaseStorageError("Google account not found or already removed.")
+
+    try:
+        client.table("calendars").delete().eq("user_id", user_id).execute()
+    except APIError as exc:
+        raise SupabaseStorageError(f"Failed to clear calendars: {exc.message}") from exc
+
+
+def sync_google_calendars(
+    user_id: str, calendars: Iterable[Dict[str, Any]]
+) -> None:
+    """
+    Upsert Google calendars for the user and remove stale entries.
+
+    Args:
+        user_id: Supabase user ID
+        calendars: Iterable of calendar dictionaries with keys:
+            - id (str): Google calendar ID
+            - summary (str): Calendar display name
+            - primary (bool): Whether this is the primary calendar
+            - background_color (str | None): Hex color provided by Google
+    """
+
+    normalized: List[Dict[str, Any]] = []
+    for calendar in calendars:
+        google_id = calendar.get("id")
+        if not google_id:
+            continue
+
+        normalized.append(
+            _without_none(
+                {
+                    "user_id": user_id,
+                    "google_calendar_id": google_id,
+                    "name": calendar.get("summary") or google_id,
+                    "description": calendar.get("description"),
+                    "color": calendar.get("background_color")
+                    or calendar.get("foreground_color"),
+                    "is_primary": bool(calendar.get("primary", False)),
+                }
+            )
+        )
+
+    client = get_service_client()
+
+    try:
+        if normalized:
+            client.table("calendars").upsert(
+                normalized, on_conflict="user_id,google_calendar_id"
+            ).execute()
+        # Remove calendars that are no longer present
+        google_ids = [row["google_calendar_id"] for row in normalized]
+        delete_query = client.table("calendars").delete().eq("user_id", user_id)
+        if google_ids:
+            delete_query = delete_query.not_.in_("google_calendar_id", google_ids)
+        response = delete_query.execute()
+        # Supabase returns deleted rows when data present; no further checks needed
+        _ = response.data
+    except APIError as exc:
+        raise SupabaseStorageError(exc.message) from exc

@@ -59,7 +59,7 @@ class State(TypedDict, total=False):
     agent_result: AgentPayload | None
 
 
-calendar_service = CalendarService()
+calendar_service = CalendarService(use_token_file=False)
 agent_response_adapter = TypeAdapter(AgentResponse)
 
 
@@ -93,6 +93,9 @@ def parse_intent(state: State) -> State:
     parsed = get_intent_chain().invoke({"messages": normalized_messages})
     next_state = dict(state)
     next_state.update(parsed.model_dump())
+
+    if parsed.auth_token is None and state.get("auth_token"):
+        next_state["auth_token"] = state.get("auth_token")
 
     logger.info("PARSE_INTENT: Parsed intent - action=%s", next_state.get("action"))
     logger.info("PARSE_INTENT: Parsed intent - name=%s", next_state.get("name"))

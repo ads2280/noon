@@ -65,18 +65,35 @@ class CalendarAgentService:
                 "User has no Google Calendar access token. Please link your Google account first."
             )
 
+        google_account = user_context.get("google_account")
+        if not google_account:
+            logger.warning(
+                "CALENDAR_AGENT_SERVICE: No google_account context for user %s", user_context.get("user_id", "<unknown>")
+            )
+
         context = {
             "primary_calendar_id": user_context.get("primary_calendar_id", "primary"),
             "timezone": user_context.get("timezone", "UTC"),
             "all_calendar_ids": user_context.get("all_calendar_ids", []),
             "friends": user_context.get("friends", []),
         }
+        if google_account:
+            context["google_account"] = google_account
+
+        query_text = message.strip()
+        if not query_text:
+            raise CalendarAgentUserError("Transcription was empty. Try speaking again.")
 
         state: State = {
-            "messages": message,
+            "query": query_text,
             "auth_token": access_token,
             "context": context,
         }
+        logger.info(
+            "CALENDAR_AGENT_SERVICE: Prepared state for user %s (has_token=%s)",
+            user_context.get("user_id", "<unknown>"),
+            bool(access_token),
+        )
         return state
 
     def _load_context(self, user_id: str) -> Dict[str, Any]:

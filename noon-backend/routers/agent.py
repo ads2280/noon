@@ -5,6 +5,7 @@ from __future__ import annotations
 import logging
 import sys
 from datetime import datetime, timedelta
+from time import perf_counter
 from pathlib import Path
 
 from fastapi import APIRouter, Depends, HTTPException, status
@@ -48,19 +49,51 @@ async def chat_with_agent(
     - result: Full tool result (if available)
     - success: Whether the operation succeeded
     """
+    truncated_text = payload.text.replace("\n", " ").strip()
+    if len(truncated_text) > 160:
+        truncated_text = truncated_text[:157] + "…"
+
+    start_time = perf_counter()
+    logger.info(
+        "AGENT_CHAT_REQUEST user=%s text=%s",
+        current_user.id,
+        truncated_text,
+    )
+
     try:
         result = calendar_agent_service.chat(
             user_id=current_user.id,
             message=payload.text,
         )
+        duration_ms = (perf_counter() - start_time) * 1000
+        logger.info(
+            "AGENT_CHAT_SUCCESS user=%s tool=%s success=%s duration_ms=%.2f",
+            current_user.id,
+            result.get("tool"),
+            result.get("success"),
+            duration_ms,
+        )
         return agent_schema.AgentChatResponse(**result)
     except CalendarAgentUserError as exc:
+        duration_ms = (perf_counter() - start_time) * 1000
+        logger.warning(
+            "AGENT_CHAT_USER_ERROR user=%s duration_ms=%.2f error=%s",
+            current_user.id,
+            duration_ms,
+            exc,
+        )
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail=str(exc),
         ) from exc
     except CalendarAgentError as exc:
-        logger.exception("Error invoking agent for user %s: %s", current_user.id, exc)
+        duration_ms = (perf_counter() - start_time) * 1000
+        logger.exception(
+            "AGENT_CHAT_INTERNAL_ERROR user=%s duration_ms=%.2f error=%s",
+            current_user.id,
+            duration_ms,
+            exc,
+        )
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=str(exc),

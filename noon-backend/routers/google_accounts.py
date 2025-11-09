@@ -111,6 +111,7 @@ async def google_oauth_callback(state: str, code: str) -> RedirectResponse:
 
     try:
         supabase_client.upsert_google_account(user_id, payload)
+        supabase_client.sync_google_calendars(user_id, calendars)
     except supabase_client.SupabaseStorageError as exc:
         logger.error("Failed to persist Google account for user %s: %s", user_id, exc)
         redirect_url = google_oauth.build_app_redirect_url(

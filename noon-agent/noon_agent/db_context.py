@@ -1,14 +1,19 @@
 """Database operations for loading UserContext and managing calendar data."""
 
-from datetime import datetime, timedelta
-from typing import Dict, List, Optional
+from datetime import datetime, timedelta, timezone
+from typing import Any, Dict, List, Optional
 
-from .calendar_state import Friend as FriendSchema
+import httpx
+
+from config import get_settings as get_backend_settings
 from .calendar_state import UserContext
 from .database import get_supabase_client
 from .gcal_auth import get_calendar_service
-from .models import Calendar, Friend, User
+from .models import Calendar, GoogleAccount, User
 from .tools.gcal_api import list_events_api
+
+TOKEN_ENDPOINT = "https://oauth2.googleapis.com/token"
+TOKEN_REFRESH_MARGIN = timedelta(minutes=2)
 
 
 def load_user_from_db(user_id: str) -> Optional[User]:
@@ -48,21 +53,115 @@ def load_user_calendars(user_id: str) -> List[Calendar]:
     return [Calendar(**cal) for cal in result.data]
 
 
-def load_user_friends(user_id: str) -> List[Friend]:
+def load_first_google_account(user_id: str) -> Optional[GoogleAccount]:
     """
-    Load all friends for a user.
+    Load the first Google account associated with the user.
 
     Args:
         user_id: User UUID as string
 
     Returns:
-        List of Friend models
+        GoogleAccount model or None if not found
     """
     db = get_supabase_client()
 
-    result = db.table("friends").select("*").eq("user_id", user_id).execute()
+    query = (
+        db.table("google_accounts")
+        .select("*")
+        .eq("user_id", user_id)
+        .order("created_at", desc=False)
+        .limit(1)
+    )
 
-    return [Friend(**friend) for friend in result.data]
+    result = query.execute()
+    if not result.data:
+        return None
+
+    try:
+        return GoogleAccount(**result.data[0])
+    except TypeError:
+        # Backwards compatibility with missing fields
+        return GoogleAccount.model_validate(result.data[0])
+
+
+def _refresh_google_access_token(
+    user_id: str, account: GoogleAccount
+) -> GoogleAccount:
+    if not account.refresh_token:
+        raise ValueError(
+            f"User {user_id} has no refresh token to renew Google access token"
+        )
+
+    settings = get_backend_settings()
+    payload = {
+        "client_id": settings.google_client_id,
+        "client_secret": settings.google_client_secret,
+        "refresh_token": account.refresh_token,
+        "grant_type": "refresh_token",
+    }
+
+    response = httpx.post(
+        TOKEN_ENDPOINT, data=payload, headers={"Accept": "application/json"}, timeout=15.0
+    )
+    if response.status_code != httpx.codes.OK:
+        raise ValueError(
+            f"Failed to refresh Google access token for user {user_id}: "
+            f"{response.status_code} {response.text}"
+        )
+
+    data = response.json()
+    new_access_token = data.get("access_token")
+    if not new_access_token:
+        raise ValueError(
+            f"Google refresh response did not include access token for user {user_id}"
+        )
+
+    expires_in = data.get("expires_in")
+    new_expires_at = None
+    if isinstance(expires_in, (int, float)):
+        new_expires_at = datetime.now(timezone.utc) + timedelta(seconds=int(expires_in))
+
+    update_data: Dict[str, Any] = {"access_token": new_access_token}
+    if new_expires_at:
+        update_data["expires_at"] = new_expires_at.isoformat()
+
+    db = get_supabase_client()
+    db.table("google_accounts").update(update_data).eq("id", str(account.id)).execute()
+
+    return account.model_copy(
+        update={
+            "access_token": new_access_token,
+            "expires_at": new_expires_at or account.expires_at,
+        }
+    )
+
+
+def _ensure_valid_google_account(
+    user_id: str, account: GoogleAccount
+) -> GoogleAccount:
+    """
+    Ensure the Google account has a usable access token, refreshing if needed.
+    """
+
+    if not account.access_token:
+        if account.refresh_token:
+            return _refresh_google_access_token(user_id, account)
+        raise ValueError(f"User {user_id} has no Google access token")
+
+    if account.expires_at:
+        if isinstance(account.expires_at, str):
+            expires_at = datetime.fromisoformat(account.expires_at)
+        else:
+            expires_at = account.expires_at
+
+        if expires_at <= datetime.now(timezone.utc) + TOKEN_REFRESH_MARGIN:
+            if account.refresh_token:
+                return _refresh_google_access_token(user_id, account)
+            raise ValueError(
+                f"Google access token expired for user {user_id} and no refresh token available"
+            )
+
+    return account
 
 
 def load_user_context_from_db(user_id: str) -> UserContext:
@@ -72,9 +171,8 @@ def load_user_context_from_db(user_id: str) -> UserContext:
     This function:
     1. Loads user from database (includes OAuth tokens, timezone)
     2. Loads all user's calendars
-    3. Loads user's friends
-    4. Fetches upcoming events from Google Calendar
-    5. Constructs UserContext for the agent
+    3. Fetches upcoming events from Google Calendar
+    4. Constructs UserContext for the agent
 
     Args:
         user_id: User UUID as string
@@ -90,8 +188,15 @@ def load_user_context_from_db(user_id: str) -> UserContext:
     if not user:
         raise ValueError(f"User {user_id} not found")
 
-    if not user.google_access_token:
-        raise ValueError(f"User {user_id} has no Google access token")
+    account = load_first_google_account(user_id)
+    if not account:
+        raise ValueError(f"User {user_id} has no linked Google account")
+
+    account = _ensure_valid_google_account(user_id, account)
+    print(
+        f"[AgentDB] Using Google account {account.id} for user {user_id}; "
+        f"token present={bool(account.access_token)} expires_at={account.expires_at}"
+    )
 
     # Load calendars
     calendars = load_user_calendars(user_id)
@@ -111,22 +216,10 @@ def load_user_context_from_db(user_id: str) -> UserContext:
             # Default to 'primary'
             primary_calendar_id = "primary"
 
-    # Load friends
-    friends_db = load_user_friends(user_id)
-    friends_list: List[FriendSchema] = []
-    for friend in friends_db:
-        friends_list.append(
-            {
-                "name": friend.name,
-                "email": friend.email,
-                "calendar_id": friend.google_calendar_id or friend.email,
-            }
-        )
-
     # Fetch upcoming events from Google Calendar
     upcoming_events = []
     try:
-        service = get_calendar_service(user.google_access_token)
+        service = get_calendar_service(account.access_token)
 
         time_min = datetime.utcnow().isoformat() + "Z"
         time_max = (datetime.utcnow() + timedelta(days=7)).isoformat() + "Z"
@@ -164,10 +257,20 @@ def load_user_context_from_db(user_id: str) -> UserContext:
         "timezone": user.timezone,
         "primary_calendar_id": primary_calendar_id,
         "all_calendar_ids": all_calendar_ids,
-        "friends": friends_list,
         "upcoming_events": upcoming_events,
-        "access_token": user.google_access_token,
+        "access_token": account.access_token,
     }
+
+    user_context["google_account"] = {
+        "id": str(account.id),
+        "email": account.email,
+        "display_name": account.display_name,
+        "google_user_id": account.google_user_id,
+    }
+    if account.refresh_token:
+        user_context["google_account"]["refresh_token"] = account.refresh_token
+    if account.expires_at:
+        user_context["google_account"]["expires_at"] = account.expires_at.isoformat()
 
     return user_context
 
@@ -189,18 +292,22 @@ def update_user_tokens(
     """
     db = get_supabase_client()
 
-    update_data: Dict[str, any] = {
-        "google_access_token": access_token,
+    account = load_first_google_account(user_id)
+    if not account:
+        raise ValueError(f"User {user_id} has no linked Google account to update")
+
+    update_data: Dict[str, Any] = {
+        "access_token": access_token,
         "updated_at": datetime.utcnow().isoformat(),
     }
 
     if refresh_token:
-        update_data["google_refresh_token"] = refresh_token
+        update_data["refresh_token"] = refresh_token
 
     if expiry:
-        update_data["google_token_expiry"] = expiry.isoformat()
+        update_data["expires_at"] = expiry.isoformat()
 
-    db.table("users").update(update_data).eq("id", user_id).execute()
+    db.table("google_accounts").update(update_data).eq("id", str(account.id)).execute()
 
 
 def get_or_create_user_by_email(email: str, full_name: Optional[str] = None) -> User:

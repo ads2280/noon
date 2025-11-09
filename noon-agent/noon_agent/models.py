@@ -5,7 +5,7 @@ They are used for type hints and validation when reading/writing to the database
 """
 
 from datetime import datetime
-from typing import List, Optional
+from typing import Any, Dict, List, Optional
 from uuid import UUID
 
 from pydantic import BaseModel, EmailStr, Field
@@ -14,7 +14,7 @@ from pydantic import BaseModel, EmailStr, Field
 class UserBase(BaseModel):
     """Base user fields."""
 
-    email: EmailStr
+    email: Optional[EmailStr] = None
     full_name: Optional[str] = None
     timezone: str = Field(
         default="UTC", description="User's timezone (e.g., 'America/Los_Angeles')"
@@ -44,7 +44,7 @@ class User(UserBase):
     """Complete user model matching Supabase 'users' table."""
 
     id: UUID
-    email: EmailStr
+    email: Optional[EmailStr] = None
     full_name: Optional[str] = None
     timezone: str = "UTC"
 
@@ -57,6 +57,26 @@ class User(UserBase):
     primary_calendar_id: Optional[str] = None
 
     # Metadata
+    created_at: datetime
+    updated_at: datetime
+
+    class Config:
+        from_attributes = True
+
+
+class GoogleAccount(BaseModel):
+    """Google account linked to a user."""
+
+    id: UUID
+    user_id: UUID
+    google_user_id: str
+    email: Optional[EmailStr] = None
+    display_name: Optional[str] = None
+    avatar_url: Optional[str] = None
+    access_token: Optional[str] = None
+    refresh_token: Optional[str] = None
+    expires_at: Optional[datetime] = None
+    metadata: Optional[Dict[str, Any]] = None
     created_at: datetime
     updated_at: datetime
 
