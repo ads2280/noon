@@ -9,21 +9,13 @@ import SwiftUI
 
 struct ScheduleView: View {
     let date: Date
-    let highlightEventID: String?
-    let destructiveEventID: String?
+    let events: [DisplayEvent]
 
     private let hours = Array(0..<24)
-    private let events: [CalendarEvent]
 
-    init(
-        date: Date,
-        highlightEventID: String? = nil,
-        destructiveEventID: String? = nil
-    ) {
+    init(date: Date, events: [DisplayEvent]) {
         self.date = date
-        self.highlightEventID = highlightEventID
-        self.destructiveEventID = destructiveEventID
-        self.events = ScheduleView.makeMockEvents(for: date)
+        self.events = events
     }
 
     var body: some View {
@@ -169,7 +161,7 @@ struct ScheduleView: View {
 
 private extension ScheduleView {
     struct EventLayout {
-        let event: CalendarEvent
+        let event: DisplayEvent
         let startHour: Double
         let endHour: Double
         let durationHours: Double
@@ -194,76 +186,8 @@ private extension ScheduleView {
         return formatter
     }()
 
-    static func makeMockEvents(for date: Date) -> [CalendarEvent] {
-        var calendar = Calendar.autoupdatingCurrent
-        let timeZone = TimeZone.autoupdatingCurrent
-        calendar.timeZone = timeZone
-        let timeZoneIdentifier = timeZone.identifier
-
-        func dateForHour(_ hourFraction: Double) -> Date {
-            let normalizedHour = max(0, min(23.75, hourFraction))
-            let hour = Int(normalizedHour)
-            let minutes = Int(round((normalizedHour - Double(hour)) * 60))
-            var components = calendar.dateComponents([.year, .month, .day], from: date)
-            components.hour = hour
-            components.minute = minutes
-            components.second = 0
-            components.timeZone = timeZone
-            return calendar.date(from: components) ?? date
-        }
-
-        func makeEvent(id: String, title: String, startHour: Double, endHour: Double) -> CalendarEvent {
-            let startDate = dateForHour(startHour)
-            let endDate = dateForHour(endHour)
-            let start = CalendarEvent.EventDateTime(
-                dateTime: startDate,
-                date: nil,
-                timeZone: timeZoneIdentifier
-            )
-            let end = CalendarEvent.EventDateTime(
-                dateTime: endDate,
-                date: nil,
-                timeZone: timeZoneIdentifier
-            )
-            return CalendarEvent(
-                id: id,
-                title: title,
-                start: start,
-                end: end
-            )
-        }
-
-        let events: [CalendarEvent] = [
-            makeEvent(
-                id: "mock-event-standup",
-                title: "Daily Standup",
-                startHour: 9.0,
-                endHour: 9.5
-            ),
-            makeEvent(
-                id: "mock-event-product-review",
-                title: "Product Review",
-                startHour: 11.0,
-                endHour: 12.25
-            ),
-            makeEvent(
-                id: "mock-event-lunch",
-                title: "Lunch with Jordan",
-                startHour: 13.0,
-                endHour: 13.75
-            ),
-            makeEvent(
-                id: "mock-event-ai-strategy",
-                title: "AI Strategy Session",
-                startHour: 15.5,
-                endHour: 16.5
-            )
-        ]
-
-        return events
-    }
-
-    func layoutInfo(for event: CalendarEvent) -> EventLayout? {
+    func layoutInfo(for displayEvent: DisplayEvent) -> EventLayout? {
+        let event = displayEvent.event
         guard
             let startDate = event.start?.dateTime,
             let endDate = event.end?.dateTime
@@ -302,20 +226,21 @@ private extension ScheduleView {
 
         let title = event.title?.isEmpty == false ? event.title! : "Untitled Event"
         let shouldShowTimeRange = duration >= 1.0
-        let isHighlighted = highlightEventID == event.id
-        let isDestructive = destructiveEventID == event.id
 
         let style: ScheduleEventCard.Style
-        if isDestructive {
-            style = .destructive
-        } else if isHighlighted {
+        switch displayEvent.style {
+        case .some(.highlight):
             style = .highlight
-        } else {
+        case .some(.update):
+            style = .update
+        case .some(.destructive):
+            style = .destructive
+        case .none:
             style = .standard
         }
 
         return EventLayout(
-            event: event,
+            event: displayEvent,
             startHour: startHour,
             endHour: endHour,
             durationHours: duration,
@@ -330,11 +255,14 @@ private extension ScheduleView {
 #Preview {
     ScheduleView(
         date: Date(),
-        highlightEventID: "mock-event-lunch",
-        destructiveEventID: "mock-event-product-review"
+        events: ScheduleDisplayHelper.getDisplayEvents(
+            for: Date(),
+            highlightEventID: "mock-event-lunch",
+            destructiveEventID: "mock-event-product-review"
+        )
     )
-        .padding()
-        .frame(height: 600)
-        .background(Color.black.opacity(0.9))
+    .padding()
+    .frame(height: 600)
+    .background(Color.black.opacity(0.9))
 }
 

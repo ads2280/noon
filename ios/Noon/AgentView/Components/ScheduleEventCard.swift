@@ -11,6 +11,7 @@ struct ScheduleEventCard: View {
     enum Style {
         case standard
         case highlight
+        case update
         case destructive
     }
 
@@ -24,7 +25,7 @@ struct ScheduleEventCard: View {
         switch style {
         case .standard:
             return AnyShapeStyle(ColorPalette.Surface.overlay.opacity(0.92))
-        case .highlight:
+        case .highlight, .update:
             return AnyShapeStyle(
                 ColorPalette.Semantic.highlightBackground
             )
@@ -33,24 +34,11 @@ struct ScheduleEventCard: View {
         }
     }
 
-    private var borderStyle: AnyShapeStyle {
-        switch style {
-        case .standard:
-            return AnyShapeStyle(ColorPalette.Text.secondary.opacity(0.45))
-        case .highlight:
-            return AnyShapeStyle(
-                ColorPalette.Gradients.highlightBorder
-            )
-        case .destructive:
-            return AnyShapeStyle(ColorPalette.Text.secondary.opacity(0.6))
-        }
-    }
-
     private var shadowColor: Color {
         switch style {
         case .standard:
             return Color.black.opacity(0.15)
-        case .highlight:
+        case .highlight, .update:
             return ColorPalette.Semantic.primary.opacity(0.25)
         case .destructive:
             return Color.black.opacity(0.18)
@@ -77,10 +65,7 @@ struct ScheduleEventCard: View {
                 .padding(.horizontal, 16)
                 .padding(.vertical, 12)
             }
-            .overlay {
-                RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
-                    .stroke(borderStyle, lineWidth: 1)
-            }
+            .overlay { borderOverlay }
             .shadow(color: shadowColor, radius: 14, x: 0, y: 10)
     }
 }
@@ -88,7 +73,7 @@ struct ScheduleEventCard: View {
 private extension ScheduleEventCard {
     var textColor: Color {
         switch style {
-        case .standard, .highlight:
+        case .standard, .highlight, .update:
             return ColorPalette.Text.primary
         case .destructive:
             return ColorPalette.Text.primary.opacity(0.55)
@@ -97,7 +82,7 @@ private extension ScheduleEventCard {
 
     var secondaryTextColor: Color {
         switch style {
-        case .standard, .highlight:
+        case .standard, .highlight, .update:
             return ColorPalette.Text.secondary.opacity(0.75)
         case .destructive:
             return ColorPalette.Text.secondary.opacity(0.5)
@@ -106,10 +91,27 @@ private extension ScheduleEventCard {
 
     var strikeColor: Color {
         switch style {
-        case .standard, .highlight:
+        case .standard, .highlight, .update:
             return .clear
         case .destructive:
             return ColorPalette.Text.secondary.opacity(0.7)
+        }
+    }
+
+    @ViewBuilder
+    var borderOverlay: some View {
+        let shape = RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
+        switch style {
+        case .standard:
+            shape.stroke(ColorPalette.Text.secondary.opacity(0.45), lineWidth: 1)
+        case .highlight:
+            shape.stroke(ColorPalette.Gradients.highlightBorder, lineWidth: 1)
+        case .update:
+            shape
+                .strokeBorder(style: StrokeStyle(lineWidth: 1, dash: [6, 4]))
+                .foregroundStyle(ColorPalette.Gradients.highlightBorder)
+        case .destructive:
+            shape.stroke(ColorPalette.Text.secondary.opacity(0.6), lineWidth: 1)
         }
     }
 }
@@ -141,6 +143,15 @@ struct ScheduleEventCard_Previews: PreviewProvider {
                 showTimeRange: true,
                 cornerRadius: 12,
                 style: .highlight
+            )
+            .frame(height: 80)
+
+            ScheduleEventCard(
+                title: "AI Strategy Session",
+                timeRange: "3:30 – 4:30 PM",
+                showTimeRange: true,
+                cornerRadius: 12,
+                style: .update
             )
             .frame(height: 80)
         }
