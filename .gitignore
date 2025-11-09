@@ -13,3 +13,7 @@ noon-agent/noon_agent.egg-info/
 *token.json
 noon-backend/*.ipynb
 noon-backend/.ipynb_checkpoints/
+
+# Xcode user-specific files
+xcuserdata/
+*.xcuserstate
