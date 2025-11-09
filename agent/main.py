@@ -10,7 +10,6 @@ logger = logging.getLogger(__name__)
 llm = init_chat_model(
     "openai:gpt-5-nano",
     temperature=0.7,
-    max_tokens=1000,
     configurable_fields=("temperature", "max_tokens", "model"),
 )
 

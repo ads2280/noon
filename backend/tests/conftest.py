@@ -3,6 +3,12 @@
 import pytest
 from fastapi.testclient import TestClient
 from unittest.mock import AsyncMock, MagicMock, patch
+import os
+
+# Set required env vars for tests
+os.environ.setdefault("LANGGRAPH_AGENT_URL", "https://noon-test.langgraph.app")
+os.environ.setdefault("SUPABASE_URL", "https://test.supabase.co")
+os.environ.setdefault("SUPABASE_SERVICE_ROLE_KEY", "test-key")
 
 from main import app
 
@@ -48,9 +54,15 @@ def mock_google_account():
 @pytest.fixture
 def mock_get_current_user(mock_authenticated_user):
     """Mock the get_current_user dependency."""
-    with patch("agent.routes.agent.get_current_user") as mock:
-        mock.return_value = type("AuthenticatedUser", (), mock_authenticated_user)
-        yield mock
+    from dependencies import get_current_user
+    from schemas.user import AuthenticatedUser
+
+    def override_get_current_user():
+        return AuthenticatedUser(**mock_authenticated_user)
+
+    app.dependency_overrides[get_current_user] = override_get_current_user
+    yield
+    app.dependency_overrides.clear()
 
 
 @pytest.fixture
