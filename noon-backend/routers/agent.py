@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import logging
 import sys
+from datetime import datetime, timedelta
 from pathlib import Path
 
 from fastapi import APIRouter, Depends, HTTPException, status
@@ -19,6 +20,8 @@ if str(agent_path) not in sys.path:
 try:
     from noon_agent.main import State, graph
     from noon_agent.db_context import load_user_context_from_db
+    from noon_agent.gcal_auth import get_calendar_service
+    from noon_agent.gcal_wrapper import get_event_details, read_calendar_events
 except ImportError as e:
     logging.error(f"Failed to import agent modules: {e}")
     raise
@@ -107,4 +110,117 @@ async def chat_with_agent(
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"Agent invocation failed: {str(e)}",
+        ) from e
+
+
+@router.post("/event", response_model=agent_schema.GetEventResponse)
+async def get_event_details_with_schedule(
+    payload: agent_schema.GetEventRequest,
+    current_user: AuthenticatedUser = Depends(get_current_user),
+) -> agent_schema.GetEventResponse:
+    """
+    Get full event details by event ID and calendar ID.
+    
+    Also retrieves the day's schedule for the event's date.
+    
+    Returns:
+    - event: Full event details
+    - day_schedule: All events for that day
+    - success: Whether the operation succeeded
+    """
+    try:
+        # Load user context from database
+        try:
+            user_context = load_user_context_from_db(current_user.id)
+        except ValueError as e:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail=f"Failed to load user context: {str(e)}",
+            ) from e
+
+        # Check if user has Google access token
+        access_token = user_context.get("access_token")
+        if not access_token:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="User has no Google Calendar access token. Please link your Google account first.",
+            )
+
+        # Get calendar service
+        service = get_calendar_service(access_token)
+
+        # Get event details
+        event_result = get_event_details(
+            service=service,
+            event_id=payload.event_id,
+            calendar_id=payload.calendar_id,
+        )
+
+        if event_result.get("status") != "success":
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail=f"Event not found: {event_result.get('error', 'Unknown error')}",
+            )
+
+        event = event_result
+
+        # Parse event start time to get the day
+        start_time_str = event.get("start", "")
+        if not start_time_str:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Event has no start time",
+            )
+
+        # Parse the start time to extract the date
+        try:
+            # Handle both dateTime and date formats
+            # Extract just the date part (YYYY-MM-DD)
+            if "T" in start_time_str:
+                date_part = start_time_str.split("T")[0]
+            else:
+                date_part = start_time_str
+            
+            # Parse date components
+            year, month, day = map(int, date_part.split("-")[:3])
+            event_start = datetime(year, month, day)
+        except (ValueError, IndexError) as e:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail=f"Invalid event start time format: {start_time_str}",
+            ) from e
+
+        # Calculate day boundaries (start and end of the event's day)
+        day_start = event_start.replace(hour=0, minute=0, second=0, microsecond=0)
+        day_end = day_start + timedelta(days=1)
+
+        # Get all events for that day
+        schedule_result = read_calendar_events(
+            service=service,
+            calendar_id=payload.calendar_id,
+            time_min=day_start,
+            time_max=day_end,
+            max_results=500,  # High limit to get all events for the day
+        )
+
+        day_schedule = schedule_result if schedule_result.get("status") == "success" else {
+            "status": "error",
+            "error": schedule_result.get("error", "Unknown error"),
+            "events": [],
+            "count": 0,
+        }
+
+        return agent_schema.GetEventResponse(
+            event=event,
+            day_schedule=day_schedule,
+            success=True,
+        )
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.exception(f"Error getting event details for user {current_user.id}: {e}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Failed to get event details: {str(e)}",
         ) from e

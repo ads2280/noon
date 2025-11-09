@@ -181,7 +181,52 @@ curl -X POST "${BASE_URL}/agent/chat" \
 
 ---
 
-## Step 5: Test Different Agent Actions
+## Step 5: Test Get Event Details Endpoint
+
+### Get Event with Day Schedule
+
+```bash
+curl -X POST "${BASE_URL}/agent/event" \
+  -H "Content-Type: application/json" \
+  -H "Authorization: Bearer ${ACCESS_TOKEN}" \
+  -d '{
+    "event_id": "your-event-id-here",
+    "calendar_id": "primary"
+  }'
+```
+
+**Expected Success Response:**
+```json
+{
+  "event": {
+    "status": "success",
+    "event_id": "your-event-id-here",
+    "summary": "Team Meeting",
+    "description": "...",
+    "start": "2024-01-15T14:00:00",
+    "end": "2024-01-15T15:00:00",
+    "attendees": [...],
+    ...
+  },
+  "day_schedule": {
+    "status": "success",
+    "count": 5,
+    "events": [...]
+  },
+  "success": true
+}
+```
+
+**Expected Error Response (404 - Event Not Found):**
+```json
+{
+  "detail": "Event not found: <error message>"
+}
+```
+
+---
+
+## Step 6: Test Different Agent Actions
 
 ### Create Event
 

@@ -18,3 +18,18 @@ class AgentChatResponse(BaseModel):
     summary: str
     result: Optional[Dict[str, Any]] = None
     success: bool
+
+
+class GetEventRequest(BaseModel):
+    """Request schema for get event endpoint."""
+
+    event_id: str
+    calendar_id: str = "primary"
+
+
+class GetEventResponse(BaseModel):
+    """Response schema for get event endpoint."""
+
+    event: Dict[str, Any]
+    day_schedule: Dict[str, Any]
+    success: bool

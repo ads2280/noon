@@ -292,6 +292,61 @@ def update_calendar_event(
         }
 
 
+def get_event_details(
+    service,
+    event_id: str,
+    calendar_id: str = "primary",
+) -> Dict[str, Any]:
+    """
+    Get full details of a specific calendar event.
+
+    Args:
+        service: Google Calendar API service
+        event_id: ID of the event to retrieve
+        calendar_id: Calendar ID (default: "primary")
+
+    Returns:
+        Dictionary with full event details
+    """
+    try:
+        event = service.events().get(calendarId=calendar_id, eventId=event_id).execute()
+
+        return {
+            "status": "success",
+            "event_id": event["id"],
+            "summary": event.get("summary", "No title"),
+            "description": event.get("description", ""),
+            "location": event.get("location", ""),
+            "start": event["start"].get("dateTime", event["start"].get("date")),
+            "end": event["end"].get("dateTime", event["end"].get("date")),
+            "timezone": event["start"].get("timeZone", "UTC"),
+            "attendees": [
+                {
+                    "email": a["email"],
+                    "displayName": a.get("displayName", ""),
+                    "responseStatus": a.get("responseStatus", "needsAction"),
+                }
+                for a in event.get("attendees", [])
+            ],
+            "organizer": {
+                "email": event["organizer"].get("email", ""),
+                "displayName": event["organizer"].get("displayName", ""),
+            } if event.get("organizer") else None,
+            "event_link": event.get("htmlLink"),
+            "created": event.get("created"),
+            "updated": event.get("updated"),
+            "calendar_id": calendar_id,
+            "recurrence": event.get("recurrence", []),
+            "reminders": event.get("reminders", {}),
+        }
+
+    except HttpError as error:
+        return {
+            "status": "error",
+            "error": str(error),
+        }
+
+
 def delete_calendar_event(service, event_id: str, calendar_id: str = "primary") -> Dict[str, Any]:
     """
     Delete a calendar event.

@@ -126,6 +126,148 @@ Content-Type: application/json
 
 ---
 
+### POST `/agent/event`
+
+Get full event details by event ID and calendar ID, along with the day's schedule.
+
+**Request:**
+```http
+POST /agent/event
+Authorization: Bearer <token>
+Content-Type: application/json
+
+{
+  "event_id": "abc123xyz",
+  "calendar_id": "primary"
+}
+```
+
+**Request Body Schema:**
+```typescript
+{
+  event_id: string;        // Required: Event ID from Google Calendar
+  calendar_id?: string;    // Optional: Calendar ID (defaults to "primary")
+}
+```
+
+**Response:**
+```json
+{
+  "event": {
+    "status": "success",
+    "event_id": "abc123xyz",
+    "summary": "Team Meeting",
+    "description": "Weekly team sync",
+    "location": "Conference Room A",
+    "start": "2024-01-15T14:00:00",
+    "end": "2024-01-15T15:00:00",
+    "timezone": "America/Los_Angeles",
+    "attendees": [
+      {
+        "email": "alice@example.com",
+        "displayName": "Alice",
+        "responseStatus": "accepted"
+      }
+    ],
+    "organizer": {
+      "email": "user@example.com",
+      "displayName": "User Name"
+    },
+    "event_link": "https://www.google.com/calendar/event?eid=...",
+    "created": "2024-01-10T10:00:00Z",
+    "updated": "2024-01-12T11:00:00Z",
+    "calendar_id": "primary",
+    "recurrence": [],
+    "reminders": {}
+  },
+  "day_schedule": {
+    "status": "success",
+    "count": 5,
+    "events": [
+      {
+        "event_id": "event1",
+        "summary": "Morning Standup",
+        "start": "2024-01-15T09:00:00",
+        "end": "2024-01-15T09:30:00",
+        "description": ""
+      },
+      {
+        "event_id": "abc123xyz",
+        "summary": "Team Meeting",
+        "start": "2024-01-15T14:00:00",
+        "end": "2024-01-15T15:00:00",
+        "description": "Weekly team sync"
+      },
+      // ... more events for that day
+    ]
+  },
+  "success": true
+}
+```
+
+**Response Schema:**
+```typescript
+{
+  event: {
+    status: "success";
+    event_id: string;
+    summary: string;
+    description: string;
+    location: string;
+    start: string;  // ISO 8601 datetime
+    end: string;    // ISO 8601 datetime
+    timezone: string;
+    attendees: Array<{
+      email: string;
+      displayName: string;
+      responseStatus: string;
+    }>;
+    organizer: {
+      email: string;
+      displayName: string;
+    } | null;
+    event_link: string | null;
+    created: string;
+    updated: string;
+    calendar_id: string;
+    recurrence: string[];
+    reminders: object;
+  };
+  day_schedule: {
+    status: "success";
+    count: number;
+    events: Array<{
+      event_id: string;
+      summary: string;
+      start: string;
+      end: string;
+      description: string;
+    }>;
+  };
+  success: boolean;
+}
+```
+
+**Status Codes:**
+- `200 OK` - Request successful
+- `400 Bad Request` - Invalid request or missing Google account
+- `401 Unauthorized` - Invalid or expired token
+- `404 Not Found` - Event not found
+- `500 Internal Server Error` - Server error
+
+**Example Request:**
+```bash
+curl -X POST "http://localhost:8000/agent/event" \
+  -H "Authorization: Bearer <token>" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "event_id": "abc123xyz",
+    "calendar_id": "primary"
+  }'
+```
+
+---
+
 ## Health Check
 
 ### GET `/healthz`
@@ -187,7 +329,7 @@ These are required to link Google Calendar:
    → Backend handles callback
    ```
 
-3. **Use Agent:**
+3. **Use Agent (Natural Language):**
    ```
    POST /agent/chat
    Authorization: Bearer <token>
@@ -195,6 +337,17 @@ These are required to link Google Calendar:
      "text": "Show me my schedule this week"
    }
    → Get structured response with events
+   ```
+
+4. **Get Specific Event Details:**
+   ```
+   POST /agent/event
+   Authorization: Bearer <token>
+   {
+     "event_id": "abc123xyz",
+     "calendar_id": "primary"
+   }
+   → Get full event details + day's schedule
    ```
 
 ---
