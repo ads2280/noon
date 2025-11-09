@@ -11,6 +11,7 @@ struct ScheduleView: View {
     let date: Date
 
     private let hours = Array(0..<24)
+    private let mockEvents = MockEvent.sampleEvents
 
     var body: some View {
         GeometryReader { geometry in
@@ -61,6 +62,9 @@ struct ScheduleView: View {
         labelWidth: CGFloat,
         labelSpacing: CGFloat
     ) -> some View {
+        let eventHorizontalInset: CGFloat = 12
+        let cornerRadius: CGFloat = 12
+
         let content = ZStack(alignment: .topLeading) {
             Canvas { context, _ in
                 for index in 0...hours.count {
@@ -91,6 +95,25 @@ struct ScheduleView: View {
                             y: timelineTopInset + hourHeight * CGFloat(hour)
                         )
                 }
+            }
+
+            ForEach(mockEvents) { event in
+                let eventHeight = hourHeight * CGFloat(event.durationHours)
+                let topPosition = timelineTopInset + hourHeight * CGFloat(event.startHour)
+                let centerY = topPosition + eventHeight / 2
+                let eventWidth = max(gridWidth - eventHorizontalInset * 2, 0)
+                let centerX = gridLeading + gridWidth / 2
+                let shouldShowTimeRange = event.durationHours >= 1
+
+                ScheduleEventCard(
+                    title: event.title,
+                    timeRange: event.timeRange,
+                    showTimeRange: shouldShowTimeRange,
+                    cornerRadius: cornerRadius,
+                    style: event.style
+                )
+                .frame(width: eventWidth, height: eventHeight, alignment: .top)
+                .position(x: centerX, y: centerY)
             }
         }
         .frame(width: gridWidth + gridLeading * 2, height: gridHeight, alignment: .topLeading)
@@ -131,6 +154,50 @@ struct ScheduleView: View {
 }
 
 private extension ScheduleView {
+    struct MockEvent: Identifiable {
+        let id = UUID()
+        let title: String
+        let timeRange: String
+        let startHour: Double
+        let endHour: Double
+        let style: ScheduleEventCard.Style
+
+        var durationHours: Double {
+            max(endHour - startHour, 0.25)
+        }
+
+        static let sampleEvents: [MockEvent] = [
+            MockEvent(
+                title: "Daily Standup",
+                timeRange: "9:00 – 9:30 AM",
+                startHour: 9.0,
+                endHour: 9.5,
+                style: .standard
+            ),
+            MockEvent(
+                title: "Product Review",
+                timeRange: "11:00 AM – 12:15 PM",
+                startHour: 11.0,
+                endHour: 12.25,
+                style: .standard
+            ),
+            MockEvent(
+                title: "Lunch with Jordan",
+                timeRange: "1:00 – 1:45 PM",
+                startHour: 13.0,
+                endHour: 13.75,
+                style: .highlight
+            ),
+            MockEvent(
+                title: "AI Strategy Session",
+                timeRange: "3:30 – 4:30 PM",
+                startHour: 15.5,
+                endHour: 16.5,
+                style: .standard
+            )
+        ]
+    }
+
     static let dateFormatter: DateFormatter = {
         let formatter = DateFormatter()
         formatter.locale = Locale.autoupdatingCurrent

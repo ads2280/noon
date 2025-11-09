@@ -54,6 +54,33 @@ enum ColorPalette {
             blue: 0.23,
             opacity: 1.0
         )
+
+        /// Soft highlight background used for special calendar events.
+        static let highlightBackground = Color(
+            .displayP3,
+            red: 1.0,
+            green: 0.82,
+            blue: 0.66,
+            opacity: 0.92
+        )
+
+        /// Gradient starting hue for highlight borders.
+        static let highlightBorderStart = Color(
+            .displayP3,
+            red: 1.0,
+            green: 0.45,
+            blue: 0.24,
+            opacity: 1.0
+        )
+
+        /// Gradient ending hue for highlight borders.
+        static let highlightBorderEnd = Color(
+            .displayP3,
+            red: 1.0,
+            green: 0.32,
+            blue: 0.2,
+            opacity: 0.95
+        )
     }
 
     enum Text {
@@ -273,6 +300,17 @@ enum ColorPalette {
             center: .bottomTrailing,
             startRadius: 10,
             endRadius: 300
+        )
+
+        static let highlightBorder = LinearGradient(
+            gradient: Gradient(
+                colors: [
+                    Semantic.highlightBorderStart,
+                    Semantic.highlightBorderEnd
+                ]
+            ),
+            startPoint: .topLeading,
+            endPoint: .bottomTrailing
         )
     }
 }
