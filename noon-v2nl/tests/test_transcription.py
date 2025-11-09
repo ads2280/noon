@@ -150,6 +150,14 @@ async def test_websocket_endpoint(audio_file: Path) -> str:
         async with websockets.connect(ws_url) as websocket:
             print(f"   Connected to WebSocket: {ws_url}")
             
+            # Send start command with optional vocabulary BEFORE streaming
+            start_cmd = {"action": "start"}
+            dg_vocab = get_vocab_string()
+            if dg_vocab:
+                start_cmd["vocabulary"] = dg_vocab
+                print(f"   Using vocabulary: {dg_vocab}")
+            await websocket.send(json.dumps(start_cmd))
+            
             # Read and send audio file in chunks
             print(f"   Streaming audio chunks...")
             total_sent = 0
@@ -165,15 +173,7 @@ async def test_websocket_endpoint(audio_file: Path) -> str:
             
             print(f"\n   Total sent: {total_sent / 1024:.1f} KB")
             
-            # Send transcribe command
-            # Send start command with optional vocabulary before streaming
-            start_cmd = {"action": "start"}
-            dg_vocab = get_vocab_string()
-            if dg_vocab:
-                start_cmd["vocabulary"] = dg_vocab
-                print(f"   Using vocabulary: {dg_vocab}")
-            await websocket.send(json.dumps(start_cmd))
-            
+            # Send transcribe command (end-of-stream signal)
             command = {
                 "action": "transcribe",
                 "filename": audio_file.name
@@ -274,10 +274,12 @@ async def test_file(audio_file: Path):
         ws_norm = _normalize_text(ws_result)
         if rest_norm == ws_norm:
             print(f"Comparison:   Results match (normalized)")
+            print(f"REST final results: {rest_norm}")
+            print(f"WS final results:   {ws_norm}")
         else:
             print(f"Comparison:   Results differ")
-            print(f"REST preview: {rest_norm[:120]}")
-            print(f"WS preview:   {ws_norm[:120]}")
+            print(f"REST final results: {rest_norm}")
+            print(f"WS final results:   {ws_norm}")
     
     print(f"{'='*80}\n")
 
