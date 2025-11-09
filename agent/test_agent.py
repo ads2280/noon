@@ -36,8 +36,8 @@ class TestIntentClassification:
         result = noon_graph.invoke(state)
         assert result["request"] == "show-schedule"
         assert result["success"] is True
-        assert "start-date" in result["metadata"]
-        assert "end-date" in result["metadata"]
+        assert "start-time" in result["metadata"]
+        assert "end-time" in result["metadata"]
 
     def test_create_event_intent(self):
         """Test classification of create-event queries."""
@@ -108,11 +108,16 @@ class TestShowSchedule:
         result = noon_graph.invoke(state)
         assert result["request"] == "show-schedule"
 
-        # Verify dates are in ISO format
-        start_date = result["metadata"]["start-date"]
-        end_date = result["metadata"]["end-date"]
-        assert len(start_date) == 10  # YYYY-MM-DD format
-        assert start_date == end_date  # Same day for tomorrow
+        # Verify datetimes are in ISO format with timezone
+        start_time = result["metadata"]["start-time"]
+        end_time = result["metadata"]["end-time"]
+        assert "T" in start_time  # Must have time component
+        assert "T" in end_time  # Must have time component
+        # Check for timezone (Z or +/- offset)
+        assert (
+            start_time.endswith("Z") or "+" in start_time or start_time.count("-") > 2
+        )
+        assert end_time.endswith("Z") or "+" in end_time or end_time.count("-") > 2
 
     def test_next_week_parsing(self):
         """Test parsing 'next week' into date range."""
@@ -126,12 +131,12 @@ class TestShowSchedule:
         result = noon_graph.invoke(state)
         assert result["request"] == "show-schedule"
 
-        start_date = result["metadata"]["start-date"]
-        end_date = result["metadata"]["end-date"]
+        start_time = result["metadata"]["start-time"]
+        end_time = result["metadata"]["end-time"]
 
         # Next week should be a 7-day range
-        start = datetime.fromisoformat(start_date)
-        end = datetime.fromisoformat(end_date)
+        start = datetime.fromisoformat(start_time.replace("Z", "+00:00"))
+        end = datetime.fromisoformat(end_time.replace("Z", "+00:00"))
         assert (end - start).days >= 6  # At least 6 days difference
 
     def test_specific_day_parsing(self):
@@ -146,9 +151,12 @@ class TestShowSchedule:
         result = noon_graph.invoke(state)
         assert result["request"] == "show-schedule"
 
-        start_date = result["metadata"]["start-date"]
-        end_date = result["metadata"]["end-date"]
-        assert start_date == end_date  # Single day query
+        start_time = result["metadata"]["start-time"]
+        end_time = result["metadata"]["end-time"]
+        # For single day, start and end should be on the same day
+        start = datetime.fromisoformat(start_time.replace("Z", "+00:00"))
+        end = datetime.fromisoformat(end_time.replace("Z", "+00:00"))
+        assert start.date() == end.date()  # Same day for single day query
 
     def test_weekend_parsing(self):
         """Test parsing 'this weekend' into date range."""
@@ -163,10 +171,10 @@ class TestShowSchedule:
         assert result["request"] == "show-schedule"
 
         # Weekend should be 2 days (Saturday and Sunday)
-        start_date = result["metadata"]["start-date"]
-        end_date = result["metadata"]["end-date"]
-        start = datetime.fromisoformat(start_date)
-        end = datetime.fromisoformat(end_date)
+        start_time = result["metadata"]["start-time"]
+        end_time = result["metadata"]["end-time"]
+        start = datetime.fromisoformat(start_time.replace("Z", "+00:00"))
+        end = datetime.fromisoformat(end_time.replace("Z", "+00:00"))
         assert (end - start).days <= 1  # 0 or 1 day difference
 
 
@@ -187,8 +195,8 @@ class TestCreateEvent:
 
         metadata = result["metadata"]
         assert "title" in metadata
-        assert "start-date" in metadata
-        assert "end-date" in metadata
+        assert "start-time" in metadata
+        assert "end-time" in metadata
         assert (
             "sarah" in metadata["title"].lower()
             or "meeting" in metadata["title"].lower()
@@ -229,7 +237,7 @@ class TestCreateEvent:
         assert isinstance(metadata["attendees"], list)
 
     def test_event_duration(self):
-        """Test that event has both start and end dates."""
+        """Test that event has both start and end times."""
         state = {
             "query": "Schedule a 2-hour workshop tomorrow at 3pm",
             "auth": {},
@@ -241,10 +249,11 @@ class TestCreateEvent:
         assert result["request"] == "create-event"
 
         metadata = result["metadata"]
-        assert "start-date" in metadata
-        assert "end-date" in metadata
-        # Verify both are valid ISO format
-        assert "T" in metadata["start-date"] or len(metadata["start-date"]) == 10
+        assert "start-time" in metadata
+        assert "end-time" in metadata
+        # Verify both are valid ISO format with time component and timezone
+        assert "T" in metadata["start-time"]
+        assert "T" in metadata["end-time"]
 
 
 class TestUpdateEvent:

@@ -3,8 +3,9 @@ from langgraph.graph import StateGraph, END, START
 from langchain.chat_models import init_chat_model
 from typing_extensions import TypedDict
 from typing import Literal, Any, Optional
-from pydantic import BaseModel, Field
-import prompts
+from pydantic import BaseModel, Field, field_validator
+from datetime import datetime
+from . import prompts
 
 logger = logging.getLogger(__name__)
 llm = init_chat_model(
@@ -71,12 +72,38 @@ class ShowEventExtraction(BaseModel):
 class ShowScheduleExtraction(BaseModel):
     """Extract date range for schedule viewing."""
 
-    start_date: str = Field(
-        description="Start date in ISO 8601 format (YYYY-MM-DD)", alias="start-date"
+    start_time: str = Field(
+        description="Start datetime in ISO 8601 format with timezone (YYYY-MM-DDTHH:MM:SS±HH:MM or YYYY-MM-DDTHH:MM:SSZ)",
+        alias="start-time",
     )
-    end_date: str = Field(
-        description="End date in ISO 8601 format (YYYY-MM-DD)", alias="end-date"
+    end_time: str = Field(
+        description="End datetime in ISO 8601 format with timezone (YYYY-MM-DDTHH:MM:SS±HH:MM or YYYY-MM-DDTHH:MM:SSZ)",
+        alias="end-time",
     )
+
+    @field_validator("start_time", "end_time")
+    @classmethod
+    def validate_iso_datetime_with_timezone(cls, v: str) -> str:
+        """Validate that the string is in ISO 8601 format with timezone and includes time component."""
+        if not v:
+            raise ValueError("Datetime string cannot be empty")
+
+        # Check for time component (must have 'T' separator)
+        if "T" not in v:
+            raise ValueError("Must include time component (YYYY-MM-DDTHH:MM:SS format)")
+
+        # Check for timezone (must have 'Z' or '+'/'-' timezone offset)
+        if not (v.endswith("Z") or "+" in v.split("T")[1] or "-" in v.split("T")[1]):
+            raise ValueError("Must include timezone (Z or ±HH:MM offset)")
+
+        try:
+            # Parse to validate format
+            datetime.fromisoformat(v.replace("Z", "+00:00"))
+            return v
+        except ValueError as e:
+            raise ValueError(
+                f"Must be valid ISO 8601 datetime format with timezone: {e}"
+            )
 
     class Config:
         populate_by_name = True
@@ -86,17 +113,43 @@ class CreateEventExtraction(BaseModel):
     """Extract all information needed to create a calendar event."""
 
     title: str = Field(description="Event title")
-    start_date: str = Field(
-        description="Start date/time in ISO 8601 format", alias="start-date"
+    start_time: str = Field(
+        description="Start datetime in ISO 8601 format with timezone (YYYY-MM-DDTHH:MM:SS±HH:MM or YYYY-MM-DDTHH:MM:SSZ)",
+        alias="start-time",
     )
-    end_date: str = Field(
-        description="End date/time in ISO 8601 format", alias="end-date"
+    end_time: str = Field(
+        description="End datetime in ISO 8601 format with timezone (YYYY-MM-DDTHH:MM:SS±HH:MM or YYYY-MM-DDTHH:MM:SSZ)",
+        alias="end-time",
     )
     location: Optional[str] = Field(default=None, description="Event location")
     attendees: Optional[list[str]] = Field(
         default=None, description="List of attendee email addresses"
     )
     description: Optional[str] = Field(default=None, description="Event description")
+
+    @field_validator("start_time", "end_time")
+    @classmethod
+    def validate_iso_datetime_with_timezone(cls, v: str) -> str:
+        """Validate that the string is in ISO 8601 format with timezone and includes time component."""
+        if not v:
+            raise ValueError("Datetime string cannot be empty")
+
+        # Check for time component (must have 'T' separator)
+        if "T" not in v:
+            raise ValueError("Must include time component (YYYY-MM-DDTHH:MM:SS format)")
+
+        # Check for timezone (must have 'Z' or '+'/'-' timezone offset)
+        if not (v.endswith("Z") or "+" in v.split("T")[1] or "-" in v.split("T")[1]):
+            raise ValueError("Must include timezone (Z or ±HH:MM offset)")
+
+        try:
+            # Parse to validate format
+            datetime.fromisoformat(v.replace("Z", "+00:00"))
+            return v
+        except ValueError as e:
+            raise ValueError(
+                f"Must be valid ISO 8601 datetime format with timezone: {e}"
+            )
 
     class Config:
         populate_by_name = True
@@ -109,15 +162,15 @@ class UpdateEventExtraction(BaseModel):
     new_title: Optional[str] = Field(
         default=None, description="New event title if changing"
     )
-    new_start_date: Optional[str] = Field(
+    new_start_time: Optional[str] = Field(
         default=None,
-        description="New start date/time in ISO 8601 format",
-        alias="new-start-date",
+        description="New start datetime in ISO 8601 format with timezone (YYYY-MM-DDTHH:MM:SS±HH:MM or YYYY-MM-DDTHH:MM:SSZ)",
+        alias="new-start-time",
     )
-    new_end_date: Optional[str] = Field(
+    new_end_time: Optional[str] = Field(
         default=None,
-        description="New end date/time in ISO 8601 format",
-        alias="new-end-date",
+        description="New end datetime in ISO 8601 format with timezone (YYYY-MM-DDTHH:MM:SS±HH:MM or YYYY-MM-DDTHH:MM:SSZ)",
+        alias="new-end-time",
     )
     new_location: Optional[str] = Field(
         default=None, description="New location if changing"
@@ -128,6 +181,34 @@ class UpdateEventExtraction(BaseModel):
     new_description: Optional[str] = Field(
         default=None, description="New description if changing"
     )
+
+    @field_validator("new_start_time", "new_end_time")
+    @classmethod
+    def validate_iso_datetime_with_timezone(cls, v: Optional[str]) -> Optional[str]:
+        """Validate that the string is in ISO 8601 format with timezone and includes time component."""
+        # Allow None for optional fields
+        if v is None:
+            return v
+
+        if not v:
+            raise ValueError("Datetime string cannot be empty")
+
+        # Check for time component (must have 'T' separator)
+        if "T" not in v:
+            raise ValueError("Must include time component (YYYY-MM-DDTHH:MM:SS format)")
+
+        # Check for timezone (must have 'Z' or '+'/'-' timezone offset)
+        if not (v.endswith("Z") or "+" in v.split("T")[1] or "-" in v.split("T")[1]):
+            raise ValueError("Must include timezone (Z or ±HH:MM offset)")
+
+        try:
+            # Parse to validate format
+            datetime.fromisoformat(v.replace("Z", "+00:00"))
+            return v
+        except ValueError as e:
+            raise ValueError(
+                f"Must be valid ISO 8601 datetime format with timezone: {e}"
+            )
 
     class Config:
         populate_by_name = True
@@ -209,19 +290,19 @@ def show_schedule(state: State) -> dict:
     )
 
     logger.info(
-        f"Extracted date range - Start: {result.start_date}, End: {result.end_date}"
+        f"Extracted date range - Start: {result.start_time}, End: {result.end_time}"
     )
 
     return {
         "success": True,
-        "metadata": {"start-date": result.start_date, "end-date": result.end_date},
+        "metadata": {"start-time": result.start_time, "end-time": result.end_time},
     }
 
 
 def create_event(state: State) -> dict:
     """Extract all event details needed to create a new calendar event.
 
-    Extracts: title, start-date, end-date, location, attendees, description
+    Extracts: title, start-time, end-time, location, attendees, description
     """
     logger.info(f"Extracting event creation details from query: {state['query']}")
 
@@ -234,14 +315,14 @@ def create_event(state: State) -> dict:
     )
 
     logger.info(
-        f"Extracted event details - Title: {result.title}, Start: {result.start_date}, End: {result.end_date}"
+        f"Extracted event details - Title: {result.title}, Start: {result.start_time}, End: {result.end_time}"
     )
 
     # Build metadata dict with all event fields
     metadata = {
         "title": result.title,
-        "start-date": result.start_date,
-        "end-date": result.end_date,
+        "start-time": result.start_time,
+        "end-time": result.end_time,
     }
 
     # Add optional fields if present
@@ -286,10 +367,10 @@ def update_event(state: State) -> dict:
     # Add all new event fields if they were specified
     if result.new_title:
         metadata["title"] = result.new_title
-    if result.new_start_date:
-        metadata["start-date"] = result.new_start_date
-    if result.new_end_date:
-        metadata["end-date"] = result.new_end_date
+    if result.new_start_time:
+        metadata["start-time"] = result.new_start_time
+    if result.new_end_time:
+        metadata["end-time"] = result.new_end_time
     if result.new_location:
         metadata["location"] = result.new_location
     if result.new_attendees:
