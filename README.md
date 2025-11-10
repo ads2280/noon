@@ -11,10 +11,10 @@
 Calendars take too much time. We waste attention on scheduling instead of doing things. We wanted a simple voice shortcut that hears what you want and gets it on your calendar.
 
 ## What it does
-iOS app istens to your voice and turns it into text
-Understands the intent and produces concrete Google Calendar operations
-Executes create, update, delete, list, and get on your calendar
-Confirms the result in a clean, fast flow
+- Listens to your voice and turns it into text
+- Understands the intent and produces concrete Google Calendar operations
+- Executes create, update, delete, list, and get on your calendar
+- Confirms the result in a clean, fast flow
 
 ## Repo Atlas
 
