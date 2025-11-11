@@ -513,9 +513,9 @@ def _event_within_window(
     if end_all_day:
         end_dt = end_dt - timedelta(microseconds=1)
 
-    return start_dt >= window_start_local and end_dt <= window_end_local - timedelta(
-        microseconds=1
-    )
+    # Check if event overlaps with the window at all
+    # Event overlaps if: event starts before window ends AND event ends after window starts
+    return start_dt < window_end_local and end_dt > window_start_local
 
 
 def _build_event_payload(

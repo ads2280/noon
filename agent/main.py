@@ -295,7 +295,7 @@ def show_schedule(state: State) -> dict:
 
     return {
         "success": True,
-        "metadata": {"start-time": result.start_time, "end-time": result.end_time},
+        "metadata": {"start-date": result.start_time, "end-date": result.end_time},
     }
 
 

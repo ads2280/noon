@@ -36,8 +36,8 @@ class TestIntentClassification:
         result = noon_graph.invoke(state)
         assert result["request"] == "show-schedule"
         assert result["success"] is True
-        assert "start-time" in result["metadata"]
-        assert "end-time" in result["metadata"]
+        assert "start-date" in result["metadata"]
+        assert "end-date" in result["metadata"]
 
     def test_create_event_intent(self):
         """Test classification of create-event queries."""
@@ -109,8 +109,8 @@ class TestShowSchedule:
         assert result["request"] == "show-schedule"
 
         # Verify datetimes are in ISO format with timezone
-        start_time = result["metadata"]["start-time"]
-        end_time = result["metadata"]["end-time"]
+        start_time = result["metadata"]["start-date"]
+        end_time = result["metadata"]["end-date"]
         assert "T" in start_time  # Must have time component
         assert "T" in end_time  # Must have time component
         # Check for timezone (Z or +/- offset)
@@ -131,8 +131,8 @@ class TestShowSchedule:
         result = noon_graph.invoke(state)
         assert result["request"] == "show-schedule"
 
-        start_time = result["metadata"]["start-time"]
-        end_time = result["metadata"]["end-time"]
+        start_time = result["metadata"]["start-date"]
+        end_time = result["metadata"]["end-date"]
 
         # Next week should be a 7-day range
         start = datetime.fromisoformat(start_time.replace("Z", "+00:00"))
@@ -151,8 +151,8 @@ class TestShowSchedule:
         result = noon_graph.invoke(state)
         assert result["request"] == "show-schedule"
 
-        start_time = result["metadata"]["start-time"]
-        end_time = result["metadata"]["end-time"]
+        start_time = result["metadata"]["start-date"]
+        end_time = result["metadata"]["end-date"]
         # For single day, start and end should be on the same day
         start = datetime.fromisoformat(start_time.replace("Z", "+00:00"))
         end = datetime.fromisoformat(end_time.replace("Z", "+00:00"))
@@ -171,8 +171,8 @@ class TestShowSchedule:
         assert result["request"] == "show-schedule"
 
         # Weekend should be 2 days (Saturday and Sunday)
-        start_time = result["metadata"]["start-time"]
-        end_time = result["metadata"]["end-time"]
+        start_time = result["metadata"]["start-date"]
+        end_time = result["metadata"]["end-date"]
         start = datetime.fromisoformat(start_time.replace("Z", "+00:00"))
         end = datetime.fromisoformat(end_time.replace("Z", "+00:00"))
         assert (end - start).days <= 1  # 0 or 1 day difference
