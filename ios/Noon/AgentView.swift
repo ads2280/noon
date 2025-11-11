@@ -13,6 +13,8 @@ struct AgentView: View {
 
     @EnvironmentObject private var authViewModel: AuthViewModel
     @State private var isLoading = false
+    @State private var didConfigureViewModel = false
+    @State private var didLoadInitialSchedule = false
 
     var body: some View {
         return ZStack {
@@ -41,6 +43,17 @@ struct AgentView: View {
         }
         .onReceive(viewModel.$displayState) { state in
             handleDisplayStateChange(state)
+        }
+        .task {
+            if didConfigureViewModel == false {
+                viewModel.configure(authProvider: authViewModel)
+                didConfigureViewModel = true
+            }
+
+            if didLoadInitialSchedule == false {
+                viewModel.loadCurrentDaySchedule()
+                didLoadInitialSchedule = true
+            }
         }
     }
 

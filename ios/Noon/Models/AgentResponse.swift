@@ -699,7 +699,7 @@ Update event "\(response.metadata.eventID)" on calendar "\(response.metadata.cal
         case .noAction(let response):
             return "No action taken. Reason: \(response.metadata.reason)"
         case .error(let error):
-            return error.message ?? "Agent reported an unknown error."
+            return error.message
         }
     }
 
