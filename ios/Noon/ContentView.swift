@@ -29,9 +29,9 @@ struct ContentView: View {
                 Group {
                     switch viewModel.phase {
                     case .enterPhone:
-                        phoneEntry
+                        LandingPageView(focusedField: $focusedField)
                     case .enterCode:
-                        codeEntry
+                        CodeVerificationView(focusedField: $focusedField)
                     case .authenticated:
                         AgentView()
                     }
@@ -87,7 +87,7 @@ struct ContentView: View {
                 switch destination {
                 case .calendars:
                     if viewModel.session != nil {
-                        CalendarsView(authViewModel: viewModel)
+                        CalendarAccountsView(authViewModel: viewModel)
                     } else {
                         calendarsUnavailableFallback
                     }
@@ -95,145 +95,6 @@ struct ContentView: View {
             }
         }
         .environmentObject(viewModel)
-    }
-
-    private var phoneEntry: some View {
-        VStack(spacing: 32) {
-            Spacer()
-
-            Text("noon")
-                .font(.system(size: 52, weight: .bold, design: .rounded))
-                .foregroundStyle(ColorPalette.Gradients.primary)
-                .multilineTextAlignment(.center)
-                .padding(.horizontal, 24)
-
-            VStack(alignment: .leading, spacing: 12) {
-                Text("Phone Number")
-                    .font(.headline)
-                    .foregroundStyle(ColorPalette.Text.secondary)
-
-                TextField(
-                    "555 123 4567",
-                    text: Binding(
-                        get: { viewModel.phoneNumber },
-                        set: { newValue in
-                            viewModel.phoneNumber = PhoneNumberFormatter.formatDisplay(from: newValue)
-                        }
-                    )
-                )
-                    .keyboardType(.phonePad)
-                    .textContentType(.telephoneNumber)
-                    .padding()
-                    .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 16))
-                    .focused($focusedField, equals: .phone)
-            }
-            .padding(.horizontal, 32)
-
-            Button {
-                Task {
-                    await viewModel.requestOTP()
-                    if viewModel.phase == .enterCode {
-                        focusedField = .code
-                    }
-                }
-            } label: {
-                if viewModel.isLoading {
-                    ProgressView()
-                        .progressViewStyle(.circular)
-                        .tint(ColorPalette.Text.inverted)
-                        .frame(maxWidth: .infinity)
-                        .padding(.vertical, 18)
-                } else {
-                    Text("Send Code")
-                        .font(.title3.weight(.semibold))
-                        .foregroundStyle(ColorPalette.Text.inverted)
-                        .frame(maxWidth: .infinity)
-                        .padding(.vertical, 18)
-                }
-            }
-            .buttonStyle(.plain)
-            .background(ColorPalette.Gradients.primary)
-            .clipShape(Capsule())
-            .shadow(
-                color: ColorPalette.Semantic.primary.opacity(0.35),
-                radius: 24,
-                x: 0,
-                y: 14
-            )
-            .padding(.horizontal, 40)
-            .disabled(viewModel.isLoading)
-
-            Spacer()
-        }
-        .frame(maxWidth: 420)
-        .padding()
-    }
-
-    private var codeEntry: some View {
-        VStack(spacing: 32) {
-            Spacer()
-
-            Text("Enter Verification Code")
-                .font(.system(size: 32, weight: .bold, design: .rounded))
-                .foregroundStyle(ColorPalette.Text.primary)
-                .multilineTextAlignment(.center)
-                .padding(.horizontal, 24)
-
-            VStack(alignment: .leading, spacing: 12) {
-                Text("Code")
-                    .font(.headline)
-                    .foregroundStyle(ColorPalette.Text.secondary)
-
-                TextField("123456", text: $viewModel.otpCode)
-                    .keyboardType(.numberPad)
-                    .textContentType(.oneTimeCode)
-                    .padding()
-                    .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 16))
-                    .focused($focusedField, equals: .code)
-            }
-            .padding(.horizontal, 32)
-
-            Button {
-                Task {
-                    await viewModel.verifyOTP()
-                }
-            } label: {
-                if viewModel.isLoading {
-                    ProgressView()
-                        .progressViewStyle(.circular)
-                        .tint(ColorPalette.Text.inverted)
-                        .frame(maxWidth: .infinity)
-                        .padding(.vertical, 18)
-                } else {
-                    Text("Verify & Continue")
-                        .font(.title3.weight(.semibold))
-                        .foregroundStyle(ColorPalette.Text.inverted)
-                        .frame(maxWidth: .infinity)
-                        .padding(.vertical, 18)
-                }
-            }
-            .buttonStyle(.plain)
-            .background(ColorPalette.Gradients.primary)
-            .clipShape(Capsule())
-            .shadow(
-                color: ColorPalette.Semantic.primary.opacity(0.35),
-                radius: 24,
-                x: 0,
-                y: 14
-            )
-            .padding(.horizontal, 40)
-            .disabled(viewModel.isLoading)
-
-            Button("Use a different number") {
-                viewModel.signOut()
-                focusedField = .phone
-            }
-            .foregroundStyle(ColorPalette.Text.secondary)
-
-            Spacer()
-        }
-        .frame(maxWidth: 420)
-        .padding()
     }
 
     private var backgroundGradient: some View {
@@ -267,52 +128,5 @@ struct ContentView: View {
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .background(ColorPalette.Surface.background.ignoresSafeArea())
-    }
-}
-
-private enum PhoneNumberFormatter {
-    static func formatDisplay(from input: String) -> String {
-        let digitsOnly = input.filter(\.isNumber)
-
-        guard digitsOnly.isEmpty == false else { return "" }
-
-        var digits = digitsOnly
-
-        if digits.count >= 11, digits.hasPrefix("1") {
-            digits = String(digits.dropFirst())
-        }
-
-        if digits.count > 10 {
-            digits = String(digits.prefix(10))
-        }
-
-        let area = String(digits.prefix(3))
-        let middle = String(digits.dropFirst(min(3, digits.count)).prefix(3))
-        let last = String(digits.dropFirst(min(6, digits.count)))
-
-        var formatted = ""
-
-        if area.isEmpty == false {
-            formatted += "(\(area)"
-            if area.count == 3 {
-                formatted += ")"
-                if digits.count > 3 {
-                    formatted += " "
-                }
-            }
-        }
-
-        if middle.isEmpty == false {
-            formatted += middle
-            if middle.count == 3, last.isEmpty == false {
-                formatted += " - "
-            }
-        }
-
-        if last.isEmpty == false {
-            formatted += last
-        }
-
-        return formatted
     }
 }

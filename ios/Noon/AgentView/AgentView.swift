@@ -14,24 +14,21 @@ struct AgentView: View {
     @EnvironmentObject private var authViewModel: AuthViewModel
     @State private var isLoading = false
     @State private var didConfigureViewModel = false
-    @State private var didLoadInitialSchedule = false
 
     var body: some View {
-        return ZStack {
+        ZStack(alignment: .top) {
             ColorPalette.Gradients.backgroundBase
                 .ignoresSafeArea()
 
-            VStack(spacing: 24) {
+            if viewModel.hasLoadedSchedule {
                 ScheduleView(
                     date: viewModel.scheduleDate,
                     events: viewModel.displayEvents
                 )
-                    .padding(.horizontal, 24)
-                    .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
-
-                Spacer(minLength: 0)
+                .padding(.horizontal, 24)
+                .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
+                .transition(.opacity.combined(with: .move(edge: .top)))
             }
-            .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
         }
         .safeAreaInset(edge: .bottom, spacing: 0) {
             VStack(spacing: 0) {
@@ -48,11 +45,6 @@ struct AgentView: View {
             if didConfigureViewModel == false {
                 viewModel.configure(authProvider: authViewModel)
                 didConfigureViewModel = true
-            }
-
-            if didLoadInitialSchedule == false {
-                viewModel.loadCurrentDaySchedule()
-                didLoadInitialSchedule = true
             }
         }
     }

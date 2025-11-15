@@ -1,5 +1,5 @@
 //
-//  CalendarsViewModel.swift
+//  CalendarAccountsViewModel.swift
 //  Noon
 //
 //  Created by GPT-5 Codex on 11/9/25.
@@ -9,7 +9,7 @@ import Combine
 import Foundation
 
 @MainActor
-final class CalendarsViewModel: ObservableObject {
+final class CalendarAccountsViewModel: ObservableObject {
     @Published private(set) var accounts: [GoogleAccount] = []
     @Published private(set) var isLoading: Bool = false
     @Published private(set) var errorMessage: String?
@@ -168,6 +168,14 @@ final class CalendarsViewModel: ObservableObject {
         deletionError = nil
     }
 
+    private func currentAccessToken() -> String? {
+        if let provider = sessionProvider, let session = provider.session {
+            return session.accessToken
+        }
+
+        return storedSession?.accessToken
+    }
+
     private enum OAuthCallbackOutcome {
         case success(message: String?)
         case failure(message: String)
@@ -207,16 +215,6 @@ final class CalendarsViewModel: ObservableObject {
         }
 
         throw CalendarLinkError.missingResult
-    }
-}
-
-private extension CalendarsViewModel {
-    func currentAccessToken() -> String? {
-        if let provider = sessionProvider, let session = provider.session {
-            return session.accessToken
-        }
-
-        return storedSession?.accessToken
     }
 }
 

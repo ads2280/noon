@@ -23,6 +23,7 @@ final class AgentViewModel: ObservableObject {
     @Published private(set) var scheduleDate: Date
     @Published private(set) var displayEvents: [DisplayEvent]
     @Published private(set) var isLoadingSchedule: Bool = false
+    @Published private(set) var hasLoadedSchedule: Bool = false
 
     private weak var authProvider: AuthSessionProviding?
     private let recorder: AgentAudioRecorder
@@ -46,6 +47,7 @@ final class AgentViewModel: ObservableObject {
         self.showScheduleHandler = showScheduleHandler ?? ShowScheduleActionHandler()
         self.scheduleDate = calendar.startOfDay(for: initialScheduleDate)
         self.displayEvents = initialDisplayEvents ?? []
+        self.hasLoadedSchedule = !(initialDisplayEvents?.isEmpty ?? true)
     }
 
     func configure(authProvider: AuthSessionProviding) {
@@ -109,11 +111,6 @@ final class AgentViewModel: ObservableObject {
         }
     }
 
-    func loadCurrentDaySchedule(force: Bool = false) {
-        let today = Date()
-        loadSchedule(for: today, force: force)
-    }
-
     func reset() {
         displayState = .idle
         isRecording = false
@@ -127,6 +124,11 @@ final class AgentViewModel: ObservableObject {
         } else {
             print("[Agent] Transcription failed: \(error.localizedDescription)")
         }
+    }
+
+    func loadCurrentDaySchedule(force: Bool = false) {
+        let today = Date()
+        loadSchedule(for: today, force: force)
     }
 
     private func loadSchedule(for date: Date, force: Bool) {
@@ -147,19 +149,26 @@ final class AgentViewModel: ObservableObject {
             do {
                 let normalizedDate = calendar.startOfDay(for: date)
                 let endDate = calendar.date(byAdding: .day, value: 1, to: normalizedDate) ?? normalizedDate
-                let timezone = TimeZone.autoupdatingCurrent.identifier
-
+                
+                let timezone = TimeZone.autoupdatingCurrent
+                let formatter = ISO8601DateFormatter()
+                formatter.timeZone = timezone
+                formatter.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
+                
+                let startDateISO = formatter.string(from: normalizedDate)
+                let endDateISO = formatter.string(from: endDate)
+                
                 let accessToken = try await resolveAccessToken(initial: nil)
                 let events = try await fetchScheduleEvents(
-                    startDate: normalizedDate,
-                    endDate: endDate,
-                    timezone: timezone,
+                    startDateISO: startDateISO,
+                    endDateISO: endDateISO,
                     accessToken: accessToken,
                     allowRetry: true
                 )
 
                 scheduleDate = normalizedDate
                 displayEvents = events
+                hasLoadedSchedule = true
             } catch {
                 handle(error: error)
             }
@@ -188,15 +197,14 @@ final class AgentViewModel: ObservableObject {
         }
     }
 
-    private func handle(agentResponse: AgentResponse, accessToken: String) async throws {
-        switch agentResponse {
-        case .showSchedule(let response):
-            let result = try await showScheduleHandler.handle(response: response, accessToken: accessToken)
-            scheduleDate = result.startDate
-            displayEvents = result.displayEvents
-        default:
-            break
-        }
+    private func handle(agentResponse _: AgentResponse, accessToken: String) async throws {
+        isLoadingSchedule = true
+        defer { isLoadingSchedule = false }
+
+        let result = try await showScheduleHandler.fetchTodaySchedule(accessToken: accessToken)
+        scheduleDate = result.startDate
+        displayEvents = result.displayEvents
+        hasLoadedSchedule = true
     }
 
     private func resolveAccessToken(initial: String?) async throws -> String {
@@ -246,17 +254,15 @@ final class AgentViewModel: ObservableObject {
     }
 
     private func fetchScheduleEvents(
-        startDate: Date,
-        endDate: Date,
-        timezone: String,
+        startDateISO: String,
+        endDateISO: String,
         accessToken: String,
         allowRetry: Bool
     ) async throws -> [DisplayEvent] {
         do {
             let schedule = try await scheduleService.fetchSchedule(
-                startDate: startDate,
-                endDate: endDate,
-                timezone: timezone,
+                startDateISO: startDateISO,
+                endDateISO: endDateISO,
                 accessToken: accessToken
             )
             return schedule.events.map { DisplayEvent(event: $0) }
@@ -264,9 +270,8 @@ final class AgentViewModel: ObservableObject {
             if case .unauthorized = serviceError, allowRetry {
                 let refreshedToken = try await refreshAccessToken()
                 let schedule = try await scheduleService.fetchSchedule(
-                    startDate: startDate,
-                    endDate: endDate,
-                    timezone: timezone,
+                    startDateISO: startDateISO,
+                    endDateISO: endDateISO,
                     accessToken: refreshedToken
                 )
                 return schedule.events.map { DisplayEvent(event: $0) }

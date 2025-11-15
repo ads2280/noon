@@ -1,5 +1,5 @@
 //
-//  CalendarsView.swift
+//  CalendarAccountsView.swift
 //  Noon
 //
 //  Created by GPT-5 Codex on 11/9/25.
@@ -7,8 +7,8 @@
 
 import SwiftUI
 
-struct CalendarsView: View {
-    @StateObject private var viewModel: CalendarsViewModel
+struct CalendarAccountsView: View {
+    @StateObject private var viewModel: CalendarAccountsViewModel
     @StateObject private var coordinator = CalendarOAuthCoordinator()
 
     init(authViewModel: AuthViewModel, calendarService: CalendarServicing? = nil) {
@@ -17,7 +17,7 @@ struct CalendarsView: View {
 
     init(sessionProvider: AuthSessionProviding, calendarService: CalendarServicing? = nil) {
         _viewModel = StateObject(
-            wrappedValue: CalendarsViewModel(
+            wrappedValue: CalendarAccountsViewModel(
                 sessionProvider: sessionProvider,
                 calendarService: calendarService
             )
@@ -82,7 +82,7 @@ struct CalendarsView: View {
     }
 }
 
-private extension CalendarsView {
+private extension CalendarAccountsView {
     var connectInlineButton: some View {
         Button {
             Task {
@@ -233,7 +233,7 @@ private extension CalendarsView {
     let user = UserProfile(id: UUID().uuidString, phone: "+15551234567")
     let sessionProvider = MockSessionProvider(stored: StoredAuthSession(session: session, user: user))
     return NavigationStack {
-        CalendarsView(sessionProvider: sessionProvider, calendarService: MockCalendarService())
+        CalendarAccountsView(sessionProvider: sessionProvider, calendarService: MockCalendarService())
     }
     .preferredColorScheme(.dark)
 }

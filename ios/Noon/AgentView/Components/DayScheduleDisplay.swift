@@ -252,13 +252,45 @@ private extension ScheduleView {
 }
 
 #Preview {
-    ScheduleView(
-        date: Date(),
-        events: ScheduleDisplayHelper.getDisplayEvents(
-            for: Date(),
-            highlightEventID: "mock-event-lunch",
-            destructiveEventID: "mock-event-product-review"
+    let calendar = Calendar.autoupdatingCurrent
+    let today = calendar.startOfDay(for: Date())
+    
+    let mockEvents: [DisplayEvent] = [
+        DisplayEvent(
+            event: CalendarEvent(
+                id: "mock-event-lunch",
+                title: "Lunch Meeting",
+                start: CalendarEvent.EventDateTime(
+                    dateTime: calendar.date(byAdding: .hour, value: 12, to: today),
+                    timeZone: TimeZone.autoupdatingCurrent.identifier
+                ),
+                end: CalendarEvent.EventDateTime(
+                    dateTime: calendar.date(byAdding: .hour, value: 13, to: today),
+                    timeZone: TimeZone.autoupdatingCurrent.identifier
+                )
+            ),
+            style: .highlight
+        ),
+        DisplayEvent(
+            event: CalendarEvent(
+                id: "mock-event-product-review",
+                title: "Product Review",
+                start: CalendarEvent.EventDateTime(
+                    dateTime: calendar.date(byAdding: .hour, value: 14, to: today),
+                    timeZone: TimeZone.autoupdatingCurrent.identifier
+                ),
+                end: CalendarEvent.EventDateTime(
+                    dateTime: calendar.date(byAdding: .hour, value: 15, to: today),
+                    timeZone: TimeZone.autoupdatingCurrent.identifier
+                )
+            ),
+            style: .destructive
         )
+    ]
+    
+    ScheduleView(
+        date: today,
+        events: mockEvents
     )
     .padding()
     .frame(height: 600)

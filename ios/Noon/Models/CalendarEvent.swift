@@ -274,3 +274,21 @@ private extension CalendarEvent.RawConferenceData {
     }
 }
 
+struct DisplayEvent: Identifiable, Hashable, Sendable {
+    enum Style: Hashable, Sendable {
+        case highlight
+        case update
+        case destructive
+    }
+    
+    let event: CalendarEvent
+    let style: Style?
+    
+    var id: String { event.id }
+    
+    init(event: CalendarEvent, style: Style? = nil) {
+        self.event = event
+        self.style = style
+    }
+}
+
