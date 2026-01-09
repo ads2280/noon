@@ -14,8 +14,8 @@ from schemas.confirm_action import (
     DeleteEventRequest,
     UpdateEventRequest,
 )
-from services import supabase_client
-from google_calendar.utils.calendar_wrapper import (
+from domains.calendars.repository import CalendarRepository
+from domains.calendars.providers.google import (
     GoogleCalendarAPIError,
     GoogleCalendarCredentials,
     GoogleCalendarWrapper,
@@ -26,7 +26,8 @@ logger = logging.getLogger(__name__)
 
 def get_calendar_wrapper_for_user(user_id: str) -> GoogleCalendarWrapper:
     """Get a GoogleCalendarWrapper instance for the user's first Google account."""
-    accounts = supabase_client.list_google_accounts(user_id)
+    repository = CalendarRepository()
+    accounts = repository.get_accounts(user_id)
     if not accounts:
         raise HTTPException(
             status_code=400,

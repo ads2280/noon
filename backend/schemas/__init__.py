@@ -1,6 +1,4 @@
-"""Schemas module exports."""
+"""Shared schemas used across multiple domains."""
 
-from auth.schemas import auth
-from google_calendar.schemas import google_accounts, google_calendar
-
-__all__ = ["auth", "google_accounts", "google_calendar"]
+# These schemas are shared across domains and remain at the root level
+# Domain-specific schemas are in domains/*/schemas.py

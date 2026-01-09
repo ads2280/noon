@@ -61,6 +61,16 @@
             value = "noon://oauth/google"
             isEnabled = "YES">
          </EnvironmentVariable>
+         <EnvironmentVariable
+            key = "SUPABASE_URL"
+            value = "https://ouuqqsntczwicaeqewun.supabase.co"
+            isEnabled = "YES">
+         </EnvironmentVariable>
+         <EnvironmentVariable
+            key = "SUPABASE_ANON_KEY"
+            value = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im91dXFxc250Y3p3aWNhZXFld3VuIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjI2MjE0NDcsImV4cCI6MjA3ODE5NzQ0N30.8Cs7UWDcA5zW-PMCF3k3yyiVhj_wEn35R1E7HdTJ-ks"
+            isEnabled = "YES">
+         </EnvironmentVariable>
       </EnvironmentVariables>
    </LaunchAction>
    <ProfileAction

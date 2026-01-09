@@ -55,19 +55,18 @@ class TestAgentAction:
         # Arrange
         audio_file = ("test.wav", BytesIO(b"fake audio data"), "audio/wav")
 
-        with patch(
-            "agent.routes.agent.supabase_client.list_google_accounts"
-        ) as mock_list:
-            mock_list.return_value = []
+        with patch("api.v1.agent.CalendarRepository") as mock_repo_class:
+            mock_repo_instance = mock_repo_class.return_value
+            mock_repo_instance.get_accounts.return_value = []
 
             # Act
             response = test_client.post(
-                "/agent/action", files={"file": audio_file}, headers=auth_headers
+                "/api/v1/agent/action", files={"file": audio_file}, headers=auth_headers
             )
 
-        # Assert
-        assert response.status_code == 400
-        assert "No Google account linked" in response.json()["detail"]
+            # Assert
+            assert response.status_code == 400
+            assert "No Google account linked" in response.json()["detail"]
 
     def test_agent_action_transcription_failure(
         self,
@@ -81,7 +80,7 @@ class TestAgentAction:
         audio_file = ("test.wav", BytesIO(b"fake audio data"), "audio/wav")
 
         with patch(
-            "agent.routes.agent.transcription_service.transcribe"
+            "api.v1.agent.transcription_service.transcribe"
         ) as mock_transcribe:
 
             async def fail_transcribe(*args, **kwargs):
@@ -91,7 +90,7 @@ class TestAgentAction:
 
             # Act
             response = test_client.post(
-                "/agent/action", files={"file": audio_file}, headers=auth_headers
+                "/api/v1/agent/action", files={"file": audio_file}, headers=auth_headers
             )
 
         # Assert
@@ -104,7 +103,7 @@ class TestAgentAction:
         audio_file = ("test.wav", BytesIO(b"fake audio data"), "audio/wav")
 
         # Act - No auth headers
-        response = test_client.post("/agent/action", files={"file": audio_file})
+        response = test_client.post("/api/v1/agent/action", files={"file": audio_file})
 
         # Assert
         assert response.status_code == 403
@@ -135,7 +134,7 @@ class TestAgentAction:
         audio_file = ("test.wav", BytesIO(b"fake audio data"), "audio/wav")
 
         with patch(
-            "agent.routes.agent.transcription_service.transcribe"
+            "api.v1.agent.transcription_service.transcribe"
         ) as mock_transcribe:
 
             async def empty_transcribe(*args, **kwargs):
@@ -145,7 +144,7 @@ class TestAgentAction:
 
             # Act
             response = test_client.post(
-                "/agent/action", files={"file": audio_file}, headers=auth_headers
+                "/api/v1/agent/action", files={"file": audio_file}, headers=auth_headers
             )
 
         # Assert

@@ -6,6 +6,10 @@
 	objectVersion = 77;
 	objects = {
 
+/* Begin PBXBuildFile section */
+		1596A8782F0F80A700508554 /* Supabase in Frameworks */ = {isa = PBXBuildFile; productRef = 15E88F692EBFC787002FDB9B /* Supabase */; };
+/* End PBXBuildFile section */
+
 /* Begin PBXFileReference section */
 		15E88F5B2EBFC785002FDB9B /* Noon.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = Noon.app; sourceTree = BUILT_PRODUCTS_DIR; };
 /* End PBXFileReference section */
@@ -23,6 +27,7 @@
 			isa = PBXFrameworksBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				1596A8782F0F80A700508554 /* Supabase in Frameworks */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -65,6 +70,7 @@
 			);
 			name = Noon;
 			packageProductDependencies = (
+				15E88F692EBFC787002FDB9B /* Supabase */,
 			);
 			productName = Noon;
 			productReference = 15E88F5B2EBFC785002FDB9B /* Noon.app */;
@@ -94,6 +100,9 @@
 			);
 			mainGroup = 15E88F522EBFC785002FDB9B;
 			minimizedProjectReferenceProxies = 1;
+			packageReferences = (
+				15E88F6A2EBFC787002FDB9B /* XCRemoteSwiftPackageReference "supabase-swift" */,
+			);
 			preferredProjectObjectVersion = 77;
 			productRefGroup = 15E88F5C2EBFC785002FDB9B /* Products */;
 			projectDirPath = "";
@@ -256,6 +265,8 @@
 				GENERATE_INFOPLIST_FILE = YES;
 				INFOPLIST_KEY_GoogleOAuthCallbackURL = "noon://oauth/google";
 				INFOPLIST_KEY_NSMicrophoneUsageDescription = "Noon needs microphone access to capture your voice requests.";
+				INFOPLIST_KEY_SupabaseAnonKey = "";
+				INFOPLIST_KEY_SupabaseURL = "";
 				INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES;
 				INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents = YES;
 				INFOPLIST_KEY_UILaunchScreen_Generation = YES;
@@ -290,6 +301,8 @@
 				GENERATE_INFOPLIST_FILE = YES;
 				INFOPLIST_KEY_GoogleOAuthCallbackURL = "noon://oauth/google";
 				INFOPLIST_KEY_NSMicrophoneUsageDescription = "Noon needs microphone access to capture your voice requests.";
+				INFOPLIST_KEY_SupabaseAnonKey = "";
+				INFOPLIST_KEY_SupabaseURL = "";
 				INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES;
 				INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents = YES;
 				INFOPLIST_KEY_UILaunchScreen_Generation = YES;
@@ -334,6 +347,25 @@
 			defaultConfigurationName = Release;
 		};
 /* End XCConfigurationList section */
+
+/* Begin XCRemoteSwiftPackageReference section */
+		15E88F6A2EBFC787002FDB9B /* XCRemoteSwiftPackageReference "supabase-swift" */ = {
+			isa = XCRemoteSwiftPackageReference;
+			repositoryURL = "https://github.com/supabase/supabase-swift";
+			requirement = {
+				kind = upToNextMajorVersion;
+				minimumVersion = 2.0.0;
+			};
+		};
+/* End XCRemoteSwiftPackageReference section */
+
+/* Begin XCSwiftPackageProductDependency section */
+		15E88F692EBFC787002FDB9B /* Supabase */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = 15E88F6A2EBFC787002FDB9B /* XCRemoteSwiftPackageReference "supabase-swift" */;
+			productName = Supabase;
+		};
+/* End XCSwiftPackageProductDependency section */
 	};
 	rootObject = 15E88F532EBFC785002FDB9B /* Project object */;
 }

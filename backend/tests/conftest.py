@@ -54,7 +54,7 @@ def mock_google_account():
 @pytest.fixture
 def mock_get_current_user(mock_authenticated_user):
     """Mock the get_current_user dependency."""
-    from dependencies import get_current_user
+    from core.dependencies import get_current_user
     from schemas.user import AuthenticatedUser
 
     def override_get_current_user():
@@ -68,8 +68,9 @@ def mock_get_current_user(mock_authenticated_user):
 @pytest.fixture
 def mock_list_google_accounts():
     """Mock list_google_accounts function."""
-    with patch("agent.routes.agent.supabase_client.list_google_accounts") as mock:
-        mock.return_value = [
+    with patch("api.v1.agent.CalendarRepository") as mock_repo_class:
+        mock_repo_instance = mock_repo_class.return_value
+        mock_repo_instance.get_accounts.return_value = [
             {
                 "id": "google-account-123",
                 "email": "test@example.com",
@@ -78,13 +79,13 @@ def mock_list_google_accounts():
                 "expires_at": "2024-12-31T23:59:59Z",
             }
         ]
-        yield mock
+        yield mock_repo_instance.get_accounts
 
 
 @pytest.fixture
 def mock_transcription_service():
     """Mock transcription service."""
-    with patch("agent.routes.agent.transcription_service.transcribe") as mock:
+    with patch("api.v1.agent.transcription_service.transcribe") as mock:
 
         async def mock_transcribe(*args, **kwargs):
             return "What am I doing next weekend?"
@@ -96,7 +97,7 @@ def mock_transcription_service():
 @pytest.fixture
 def mock_langgraph_client():
     """Mock LangGraph SDK client."""
-    with patch("agent.routes.agent.get_client") as mock_get_client:
+    with patch("api.v1.agent.get_client") as mock_get_client:
         mock_client = MagicMock()
         mock_runs = MagicMock()
 
