@@ -98,29 +98,22 @@ final class AgentViewModel: ObservableObject {
 
                 displayState = .uploading
                 print("[Agent] Recorded audio duration: \(recording.duration)s")
-                // print("[Agent] Uploading audio to /agent/action…")
+                print("[Agent] Uploading audio to /agent/action…")
 
-                // MOCK: Do not call the agent action endpoint. Instead, construct a mock ShowEvent response.
-                let mockResponse = AgentResponse.showEvent(
-                    ShowEventResponse(
-                        metadata: ShowEventMetadata(
-                            eventID: "fea8bc64c5ff403e818e32864c22c8e7",
-                            calendarID: "primary"
-                        )
-                    )
+                let (result, tokenUsed) = try await sendRecording(
+                    recording: recording,
+                    accessToken: startingToken
                 )
-                let result = AgentActionResult(statusCode: 200, data: Data(), agentResponse: mockResponse)
-                let tokenUsed = startingToken
 
                 try await handle(agentResponse: result.agentResponse, accessToken: tokenUsed)
 
                 displayState = .completed(result: result)
 
-                // if let responseString = result.responseString {
-                //     print("[Agent] Agent response (\(result.statusCode)): \(responseString)")
-                // } else {
-                //     print("[Agent] Agent response (\(result.statusCode)) received (\(result.data.count) bytes)")
-                // }
+                if let responseString = result.responseString {
+                    print("[Agent] Agent response (\(result.statusCode)): \(responseString)")
+                } else {
+                    print("[Agent] Agent response (\(result.statusCode)) received (\(result.data.count) bytes)")
+                }
             } catch {
                 handle(error: error)
             }

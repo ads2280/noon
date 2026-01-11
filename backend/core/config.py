@@ -32,6 +32,9 @@ class Settings(BaseSettings):
     langgraph_api_key: str | None = None
     langsmith_api_key: str | None = None
 
+    # Deepgram transcription configuration
+    deepgram_api_key: str | None = None
+
     model_config = SettingsConfigDict(
         env_file=".env",
         env_file_encoding="utf-8",
