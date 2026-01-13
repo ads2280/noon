@@ -3,17 +3,13 @@ Voice-to-natural-language transcription service using Deepgram.
 Provides a class-based interface for transcribing audio files with optional custom vocabulary support.
 """
 
-import os
 import io
 from pathlib import Path
 from typing import Optional, List, Tuple, Union, BinaryIO
-from dotenv import load_dotenv
 import logging
 import httpx
 
-# Load .env file from backend directory
-env_path = Path(__file__).parent.parent.parent / ".env"
-load_dotenv(env_path)
+from core.config import get_settings
 
 # Configure logging
 logging.basicConfig(level=logging.INFO)
@@ -41,13 +37,14 @@ class TranscriptionService:
         Initialize the transcription service.
 
         Args:
-            api_key: Deepgram API key. If not provided, will use DEEPGRAM_API_KEY env var.
+            api_key: Deepgram API key. If not provided, will use DEEPGRAM_API_KEY from Settings.
             model: Deepgram model to use (default: "nova-3")
             language: Language code (default: "en-US")
             smart_format: Enable smart formatting (default: True)
             punctuate: Enable punctuation (default: True)
         """
-        self.api_key = api_key or os.getenv("DEEPGRAM_API_KEY")
+        settings = get_settings()
+        self.api_key = api_key or settings.deepgram_api_key
         self.model = model
         self.language = language
         self.smart_format = smart_format

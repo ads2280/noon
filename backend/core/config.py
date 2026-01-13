@@ -3,8 +3,12 @@
 from __future__ import annotations
 
 from functools import lru_cache
+from pathlib import Path
 
 from pydantic_settings import BaseSettings, SettingsConfigDict
+
+# Get the project root directory (two levels up from this file)
+PROJECT_ROOT = Path(__file__).parent.parent.parent
 
 
 class Settings(BaseSettings):
@@ -36,7 +40,7 @@ class Settings(BaseSettings):
     deepgram_api_key: str | None = None
 
     model_config = SettingsConfigDict(
-        env_file=[".env", "backend/.env"],  # Try root first, then backend dir
+        env_file=str(PROJECT_ROOT / ".env"),  # Load from project root .env file
         env_file_encoding="utf-8",
         case_sensitive=False,
         extra="ignore",

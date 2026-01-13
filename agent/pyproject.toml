@@ -12,5 +12,9 @@ dependencies = [
     "langsmith>=0.4.42",
 ]
 
+[build-system]
+requires = ["setuptools>=61.0", "wheel"]
+build-backend = "setuptools.build_meta"
+
 [tool.setuptools]
 py-modules = ["main", "__init__"]
