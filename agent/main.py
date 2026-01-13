@@ -8,7 +8,7 @@ from typing import Literal, Any, List, Dict, Optional
 from langchain_openai import ChatOpenAI
 from langchain_core.messages import BaseMessage, HumanMessage, AIMessage, ToolMessage, SystemMessage
 
-from agent.tools import ALL_TOOLS, INTERNAL_TOOLS, EXTERNAL_TOOLS
+from agent.tools import ALL_TOOLS, INTERNAL_TOOLS, EXTERNAL_TOOLS, set_auth_context
 
 logger = logging.getLogger(__name__)
 
@@ -298,12 +298,16 @@ def tool_execution_node(state: State) -> Dict[str, Any]:
         tool_results = state.get("tool_results", {})
         tool_calls = tool_results.get("tool_calls", [])
         messages = state.get("messages", [])
+        auth = state.get("auth")  # Get auth from state
         
         logger.info(f"Tool execution node: executing {len(tool_calls)} tool calls")
         
         if not tool_calls:
             logger.warning("No tool calls to execute")
             return {"terminated": True}
+        
+        # Set auth context for tools to access
+        set_auth_context(auth)
         
         tool_messages = []
         has_external_tool = False

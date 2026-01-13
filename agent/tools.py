@@ -1,13 +1,68 @@
 """Tool definitions for the calendar scheduling agent."""
 
+import asyncio
+import logging
 from datetime import datetime
-from typing import List, Dict, Any
+from typing import List, Dict, Any, Optional
 from langchain_core.tools import tool
-from agent.mocks import (
-    generate_mock_events,
-    generate_mock_event,
-    generate_mock_calendars,
-)
+from agent.calendar_client import create_calendar_client
+
+logger = logging.getLogger(__name__)
+
+# Context variable to store auth for tools (set during tool execution)
+import contextvars
+_auth_context: contextvars.ContextVar[Optional[Dict[str, Any]]] = contextvars.ContextVar('auth', default=None)
+
+def get_auth_context() -> Optional[Dict[str, Any]]:
+    """Get auth from context (set during tool execution)."""
+    return _auth_context.get()
+
+def set_auth_context(auth: Optional[Dict[str, Any]]):
+    """Set auth in context for tool execution."""
+    _auth_context.set(auth)
+
+# Global calendar client instance (initialized on module import)
+_calendar_client = None
+
+def get_calendar_client():
+    """Get or create the global calendar client instance."""
+    global _calendar_client
+    if _calendar_client is None:
+        _calendar_client = create_calendar_client()
+    return _calendar_client
+
+def set_calendar_client(client):
+    """Set the global calendar client (for testing or custom initialization)."""
+    global _calendar_client
+    _calendar_client = client
+
+
+def _run_async(coro):
+    """Helper to run async functions synchronously."""
+    try:
+        # Try to get existing event loop
+        loop = asyncio.get_event_loop()
+        if loop.is_running():
+            # If loop is running, we're in an async context - this shouldn't happen for tools
+            # but handle it by creating a new thread
+            import concurrent.futures
+            with concurrent.futures.ThreadPoolExecutor() as executor:
+                future = executor.submit(_run_async_in_thread, coro)
+                return future.result()
+        else:
+            return loop.run_until_complete(coro)
+    except RuntimeError:
+        # No event loop, create new one
+        return _run_async_in_thread(coro)
+
+def _run_async_in_thread(coro):
+    """Run async function in a new thread with its own event loop."""
+    loop = asyncio.new_event_loop()
+    asyncio.set_event_loop(loop)
+    try:
+        return loop.run_until_complete(coro)
+    finally:
+        loop.close()
 
 
 # Internal tools - gather information without terminating
@@ -22,23 +77,39 @@ def read_schedule(start_time: str, end_time: str) -> List[Dict[str, Any]]:
     
     Returns:
         List of events with minimal details (id, summary, start, end, calendar_id)
+        All events include both id and calendar_id (required for event identification).
     """
-    start_dt = datetime.fromisoformat(start_time.replace("Z", "+00:00"))
-    end_dt = datetime.fromisoformat(end_time.replace("Z", "+00:00"))
-    
-    events = generate_mock_events(start_dt, end_dt, count=3)
-    
-    # Return minimal details
-    return [
-        {
-            "id": event["id"],
-            "summary": event["summary"],
-            "start": event["start"],
-            "end": event["end"],
-            "calendar_id": event["calendar_id"],
-        }
-        for event in events
-    ]
+    try:
+        auth = get_auth_context()
+        client = get_calendar_client()
+        
+        # Run async method synchronously
+        events = _run_async(
+            client.read_schedule(start_time, end_time, auth=auth)
+        )
+        
+        # Log the raw response for debugging
+        logger.info(f"read_schedule returned {len(events)} events")
+        
+        # Ensure all events have both id and calendar_id (required)
+        result = []
+        for event in events:
+            if "id" not in event or "calendar_id" not in event:
+                logger.warning(f"Event missing required fields (id, calendar_id): {event}")
+                continue
+            result.append({
+                "id": event["id"],
+                "summary": event.get("summary"),
+                "start": event.get("start"),
+                "end": event.get("end"),
+                "calendar_id": event["calendar_id"],
+            })
+        logger.info(f"read_schedule returning {len(result)} formatted events")
+        return result
+    except Exception as e:
+        logger.error(f"Error in read_schedule: {str(e)}", exc_info=True)
+        # Re-raise the error so it's visible in LangSmith traces instead of silently returning empty list
+        raise
 
 
 @tool
@@ -52,24 +123,35 @@ def search_events(keywords: str, start_time: str, end_time: str) -> List[Dict[st
         end_time: Timezone-aware ISO format datetime string with offset (e.g., "2026-01-14T23:59:59-08:00")
     
     Returns:
-        List of matching events with minimal details
+        List of matching events with minimal details.
+        All events include both id and calendar_id (required for event identification).
     """
-    start_dt = datetime.fromisoformat(start_time.replace("Z", "+00:00"))
-    end_dt = datetime.fromisoformat(end_time.replace("Z", "+00:00"))
-    
-    keyword_list = keywords.split()
-    events = generate_mock_events(start_dt, end_dt, count=2, keywords=keyword_list)
-    
-    return [
-        {
-            "id": event["id"],
-            "summary": event["summary"],
-            "start": event["start"],
-            "end": event["end"],
-            "calendar_id": event["calendar_id"],
-        }
-        for event in events
-    ]
+    try:
+        auth = get_auth_context()
+        client = get_calendar_client()
+        
+        # Run async method synchronously
+        events = _run_async(
+            client.search_events(keywords, start_time, end_time, auth=auth)
+        )
+        
+        # Ensure all events have both id and calendar_id (required)
+        result = []
+        for event in events:
+            if "id" not in event or "calendar_id" not in event:
+                logger.warning(f"Event missing required fields (id, calendar_id): {event}")
+                continue
+            result.append({
+                "id": event["id"],
+                "summary": event.get("summary"),
+                "start": event.get("start"),
+                "end": event.get("end"),
+                "calendar_id": event["calendar_id"],
+            })
+        return result
+    except Exception as e:
+        logger.error(f"Error in search_events: {str(e)}", exc_info=True)
+        return []  # Return empty list on error
 
 
 @tool
@@ -82,20 +164,55 @@ def read_event(event_id: str, calendar_id: str) -> Dict[str, Any]:
         calendar_id: The ID of the calendar containing the event
     
     Returns:
-        Detailed event information
+        Detailed event information with both id and calendar_id (required).
     """
-    return generate_mock_event(event_id=event_id, calendar_id=calendar_id)
+    try:
+        auth = get_auth_context()
+        client = get_calendar_client()
+        
+        # Run async method synchronously
+        event = _run_async(
+            client.read_event(event_id, calendar_id, auth=auth)
+        )
+        
+        # Ensure both id and calendar_id are present (required)
+        if "id" not in event:
+            event["id"] = event_id
+        if "calendar_id" not in event:
+            event["calendar_id"] = calendar_id
+            
+        return event
+    except Exception as e:
+        logger.error(f"Error in read_event: {str(e)}", exc_info=True)
+        # Return minimal event dict on error
+        return {
+            "id": event_id,
+            "calendar_id": calendar_id,
+            "error": str(e),
+        }
 
 
 @tool
 def list_calendars() -> List[Dict[str, Any]]:
     """
-    List all available calendars.
+    List all available calendars from ALL connected Google accounts.
     
     Returns:
         List of calendars with their details
     """
-    return generate_mock_calendars()
+    try:
+        auth = get_auth_context()
+        client = get_calendar_client()
+        
+        # Run async method synchronously
+        calendars = _run_async(
+            client.list_calendars(auth=auth)
+        )
+        
+        return calendars
+    except Exception as e:
+        logger.error(f"Error in list_calendars: {str(e)}", exc_info=True)
+        return []  # Return empty list on error
 
 
 # External tools - terminate agent and return response
@@ -166,8 +283,8 @@ def request_create_event(
     """
     metadata = {
         "summary": summary,
-        "start": {"dateTime": start_time, "timeZone": "America/Los_Angeles"},
-        "end": {"dateTime": end_time, "timeZone": "America/Los_Angeles"},
+        "start": {"dateTime": start_time},
+        "end": {"dateTime": end_time},
         "calendar_id": calendar_id,
     }
     
@@ -215,9 +332,9 @@ def request_update_event(
     if summary:
         metadata["summary"] = summary
     if start_time:
-        metadata["start"] = {"dateTime": start_time, "timeZone": "America/Los_Angeles"}
+        metadata["start"] = {"dateTime": start_time}
     if end_time:
-        metadata["end"] = {"dateTime": end_time, "timeZone": "America/Los_Angeles"}
+        metadata["end"] = {"dateTime": end_time}
     if description:
         metadata["description"] = description
     if location:
