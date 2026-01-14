@@ -247,6 +247,50 @@ class CalendarService:
             supabase_calendar,
         )
 
+    async def delete_event(
+        self,
+        *,
+        user_id: str,
+        calendar_id: str,
+        event_id: str,
+    ) -> None:
+        """Delete an event from Google Calendar."""
+        contexts, _ = await self._prepare_context(user_id)
+
+        # Find the account context that has access to this calendar
+        event_context: AccountContext | None = None
+        for context in contexts:
+            await self._hydrate_calendars([context])
+            for calendar in context.calendars:
+                if calendar.get("id") == calendar_id:
+                    event_context = context
+                    break
+            if event_context:
+                break
+
+        if event_context is None:
+            raise GoogleCalendarUserError(
+                f"Calendar {calendar_id} not found in any linked Google account."
+            )
+
+        # Delete the event via provider
+        try:
+            await event_context.provider.delete_event(
+                calendar_id=calendar_id,
+                event_id=event_id,
+            )
+        except GoogleCalendarAPIError as exc:
+            if exc.status_code == 401:
+                await self._handle_unauthorized(event_context)
+                await event_context.provider.delete_event(
+                    calendar_id=calendar_id,
+                    event_id=event_id,
+                )
+            else:
+                raise GoogleCalendarServiceError(
+                    f"Failed to delete event in Google Calendar: {str(exc)}"
+                ) from exc
+
     async def _prepare_context(
         self, user_id: str
     ) -> Tuple[List[AccountContext], Dict[str, Dict[str, Any]]]:

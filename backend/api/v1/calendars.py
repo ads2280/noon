@@ -329,6 +329,57 @@ async def create_event(
         raise HTTPException(status_code=exc.status_code, detail=str(exc)) from exc
 
 
+@router.delete("/events/{event_id}", status_code=status.HTTP_204_NO_CONTENT)
+async def delete_event(
+    event_id: str,
+    calendar_id: str,
+    current_user: AuthenticatedUser = Depends(get_current_user),
+) -> Response:
+    """Delete an event from Google Calendar."""
+    service = CalendarService()
+    try:
+        await service.delete_event(
+            user_id=current_user.id,
+            calendar_id=calendar_id,
+            event_id=event_id,
+        )
+        return Response(status_code=status.HTTP_204_NO_CONTENT)
+    except GoogleCalendarUserError as exc:
+        raise HTTPException(status_code=exc.status_code, detail=str(exc)) from exc
+    except GoogleCalendarAuthError as exc:
+        raise HTTPException(status_code=exc.status_code, detail=str(exc)) from exc
+    except GoogleCalendarAPIError as exc:
+        if exc.status_code == 403:
+            logger.warning(
+                "GOOGLE_CALENDAR_INSUFFICIENT_PERMISSIONS user=%s calendar=%s event=%s",
+                current_user.id,
+                calendar_id,
+                event_id,
+            )
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="Insufficient permissions to delete events. Please re-link your Google Calendar account with write permissions.",
+            ) from exc
+        logger.exception(
+            "GOOGLE_CALENDAR_API_ERROR user=%s calendar=%s event=%s",
+            current_user.id,
+            calendar_id,
+            event_id,
+        )
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Google Calendar API error: {str(exc)}",
+        ) from exc
+    except GoogleCalendarServiceError as exc:
+        logger.exception(
+            "GOOGLE_CALENDAR_SERVICE_ERROR user=%s calendar=%s event=%s",
+            current_user.id,
+            calendar_id,
+            event_id,
+        )
+        raise HTTPException(status_code=exc.status_code, detail=str(exc)) from exc
+
+
 @router.get("/calendar/{calendar_id}/event/{event_id}")
 async def get_event(
     calendar_id: str,

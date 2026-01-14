@@ -13,7 +13,6 @@ struct AgentView: View {
 
     @EnvironmentObject private var authViewModel: AuthViewModel
     @State private var isLoading = false
-    @State private var isCreatingEvent = false
     @State private var didConfigureViewModel = false
 
     var body: some View {
@@ -34,21 +33,41 @@ struct AgentView: View {
             }
         }
         .safeAreaInset(edge: .bottom, spacing: 0) {
-            VStack(spacing: 0) {
-                Color.clear
-                    .frame(height: 24)
-
-                ZStack(alignment: .center) {
-                    microphoneButton
+            ZStack(alignment: .bottom) {
+                // Microphone button - always in fixed position at bottom
+                VStack(spacing: 0) {
+                    Color.clear
+                        .frame(height: 24)
                     
-                    if viewModel.pendingCreateEvent != nil {
-                        confirmationButton
-                            .offset(x: 150) // Position to the right: mic center (0) + half mic width (98) + spacing (24) + half checkmark (28) = 150
+                    microphoneButton
+                        .padding(.horizontal, 24)
+                }
+                
+                // Modal appears above microphone button when there's a pending action
+                // This increases the safeAreaInset height, shrinking the schedule view above
+                if let pendingAction = viewModel.pendingAction {
+                    VStack {
+                        ConfirmationModal(
+                            actionType: actionType(for: pendingAction),
+                            onConfirm: {
+                                Task {
+                                    await viewModel.confirmPendingAction(accessToken: authViewModel.session?.accessToken)
+                                }
+                            },
+                            onCancel: {
+                                viewModel.cancelPendingAction()
+                            },
+                            isLoading: $viewModel.isConfirmingAction
+                        )
+                        .padding(.bottom, 16)
+                        .transition(.opacity.combined(with: .move(edge: .bottom)))
+                        
+                        Spacer()
+                            .frame(height: 24 + 72 + 20) // Height of microphone button section
                     }
                 }
-                .frame(maxWidth: .infinity)
-                .padding(.horizontal, 24)
             }
+            .animation(.spring(response: 0.3, dampingFraction: 0.8), value: viewModel.pendingAction != nil)
         }
         .onReceive(viewModel.$displayState) { state in
             handleDisplayStateChange(state)
@@ -108,47 +127,13 @@ struct AgentView: View {
         .padding(.bottom, 20)
     }
 
-    private var confirmationButton: some View {
-        Button {
-            isCreatingEvent = true
-            Task {
-                await viewModel.confirmCreateEvent(accessToken: authViewModel.session?.accessToken)
-                isCreatingEvent = false
-            }
-        } label: {
-            // Gradient stroke using two-circle technique
-            ZStack {
-                // Outer circle with gradient (creates the stroke effect)
-                Circle()
-                    .fill(ColorPalette.Gradients.primary)
-                    .frame(width: 56, height: 56)
-                
-                // Inner circle with background to create transparent-looking interior
-                Circle()
-                    .fill(ColorPalette.Gradients.backgroundBase)
-                    .frame(width: 52, height: 52)
-            }
-            .shadow(
-                color: ColorPalette.Semantic.primary.opacity(0.35),
-                radius: 18,
-                x: 0,
-                y: 10
-            )
-            .overlay {
-                if isCreatingEvent {
-                    ProgressView()
-                        .progressViewStyle(.circular)
-                        .tint(ColorPalette.Semantic.primary)
-                } else {
-                    Image(systemName: "checkmark")
-                        .font(.system(size: 20, weight: .semibold))
-                        .foregroundStyle(ColorPalette.Gradients.primary)
-                }
-            }
+    private func actionType(for pendingAction: AgentViewModel.PendingAction) -> ConfirmationActionType {
+        switch pendingAction {
+        case .createEvent:
+            return .createEvent
+        case .deleteEvent:
+            return .deleteEvent
         }
-        .buttonStyle(.plain)
-        .padding(.bottom, 20)
-        .disabled(isCreatingEvent)
     }
 
     private func handleDisplayStateChange(_ state: AgentViewModel.DisplayState) {

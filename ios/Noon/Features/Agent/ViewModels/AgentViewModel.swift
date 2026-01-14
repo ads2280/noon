@@ -25,7 +25,13 @@ final class AgentViewModel: ObservableObject {
     @Published private(set) var isLoadingSchedule: Bool = false
     @Published private(set) var hasLoadedSchedule: Bool = false
     @Published private(set) var focusEvent: ScheduleFocusEvent?
-    @Published var pendingCreateEvent: CreateEventResponse?
+    @Published var pendingAction: PendingAction?
+    @Published var isConfirmingAction: Bool = false
+    
+    enum PendingAction {
+        case createEvent(CreateEventResponse)
+        case deleteEvent(DeleteEventResponse)
+    }
 
     // Configuration for n-day schedule
     var numberOfDays: Int = 2
@@ -406,13 +412,15 @@ final class AgentViewModel: ObservableObject {
         
         // Use the events from the surrounding schedule directly
         let displayEvents = schedule.events.map { DisplayEvent(event: $0) }
-        let focus = ScheduleFocusEvent(eventID: eventID, style: .destructive)
         
-        // Update the schedule state directly
+        // Store the pending delete event response for confirmation
+        self.pendingAction = .deleteEvent(response)
+        
+        // Update the schedule state with destructive style applied to the event
         let dateRange = self.dateRange(for: eventDay)
         scheduleDate = dateRange.start
         self.displayEvents = displayEvents
-        self.focusEvent = focus
+        self.focusEvent = ScheduleFocusEvent(eventID: eventID, style: .destructive)
         hasLoadedSchedule = true
         
         print("Delete event: Set schedule with \(displayEvents.count) events, scheduleDate: \(Self.iso8601DateFormatter.string(from: scheduleDate)), hasLoadedSchedule: \(hasLoadedSchedule)")
@@ -529,19 +537,56 @@ final class AgentViewModel: ObservableObject {
         hasLoadedSchedule = true
         
         // Store the pending create event response for confirmation
-        self.pendingCreateEvent = response
+        self.pendingAction = .createEvent(response)
         
         print("Create event: Set schedule with \(displayEvents.count) events, scheduleDate: \(Self.iso8601DateFormatter.string(from: scheduleDate)), hasLoadedSchedule: \(hasLoadedSchedule)")
     }
 
     // MARK: - Event Confirmation
-    func confirmCreateEvent(accessToken: String?) async {
-        guard let pendingEvent = pendingCreateEvent else {
-            print("confirmCreateEvent: No pending event to confirm")
+    func confirmPendingAction(accessToken: String?) async {
+        guard let action = pendingAction else {
+            print("confirmPendingAction: No pending action to confirm")
             return
         }
         
-        let metadata = pendingEvent.metadata
+        // Clear pending action immediately so modal disappears
+        pendingAction = nil
+        
+        isConfirmingAction = true
+        defer { isConfirmingAction = false }
+        
+        switch action {
+        case .createEvent(let response):
+            await confirmCreateEvent(response: response, accessToken: accessToken)
+        case .deleteEvent(let response):
+            await confirmDeleteEvent(response: response, accessToken: accessToken)
+        }
+    }
+    
+    func cancelPendingAction() {
+        guard let action = pendingAction else { return }
+        
+        switch action {
+        case .createEvent:
+            // Remove the temporary event from display events
+            if let tempEventID = focusEvent?.eventID,
+               let tempEventIndex = displayEvents.firstIndex(where: { $0.event.id == tempEventID }) {
+                displayEvents.remove(at: tempEventIndex)
+                focusEvent = nil
+            }
+        case .deleteEvent:
+            // Clear the focus event to remove destructive style
+            focusEvent = nil
+        }
+        
+        // Clear pending action
+        pendingAction = nil
+        
+        print("cancelPendingAction: Cancelled pending action")
+    }
+    
+    private func confirmCreateEvent(response: CreateEventResponse, accessToken: String?) async {
+        let metadata = response.metadata
         let startDate = metadata.start.dateTime
         let endDate = metadata.end.dateTime
         let timezone = TimeZone.autoupdatingCurrent.identifier
@@ -567,9 +612,6 @@ final class AgentViewModel: ObservableObject {
                     request: createRequest
                 )
                 
-                // Clear pending event first
-                pendingCreateEvent = nil
-                
                 // Reload the schedule to get the real event from Google Calendar
                 // This ensures the event displays properly without the .new style
                 let createdEvent = createdResponse.event
@@ -593,20 +635,46 @@ final class AgentViewModel: ObservableObject {
         }
     }
     
-    func cancelCreateEvent() {
-        guard pendingCreateEvent != nil else { return }
+    private func confirmDeleteEvent(response: DeleteEventResponse, accessToken: String?) async {
+        let eventID = response.metadata.event_id
+        let calendarID = response.metadata.calendar_id
         
-        // Remove the temporary event from display events
-        if let tempEventID = focusEvent?.eventID,
-           let tempEventIndex = displayEvents.firstIndex(where: { $0.event.id == tempEventID }) {
-            displayEvents.remove(at: tempEventIndex)
-            focusEvent = nil
+        Task { @MainActor in
+            do {
+                let token = try await resolveAccessToken(initial: accessToken)
+                
+                // Call the calendar service to delete the event
+                try await calendarService.deleteEvent(
+                    accessToken: token,
+                    calendarId: calendarID,
+                    eventId: eventID
+                )
+                
+                // Clear focus event
+                focusEvent = nil
+                
+                // Reload the schedule to reflect the deletion
+                // Find the event to get its date for reloading
+                if let targetEvent = displayEvents.first(where: { $0.event.id == eventID }),
+                   let eventStartDate = targetEvent.event.start?.dateTime {
+                    let eventDay = calendar.startOfDay(for: eventStartDate)
+                    loadSchedule(
+                        for: eventDay,
+                        force: true,
+                        accessToken: token,
+                        focusEvent: nil
+                    )
+                } else {
+                    // Fallback: reload current schedule
+                    loadCurrentDaySchedule(force: true)
+                }
+                
+                print("confirmDeleteEvent: Successfully deleted event \(eventID) and reloaded schedule")
+            } catch {
+                print("confirmDeleteEvent: Error deleting event: \(error)")
+                handle(error: error)
+            }
         }
-        
-        // Clear pending event
-        pendingCreateEvent = nil
-        
-        print("cancelCreateEvent: Cancelled pending event creation")
     }
 
     // MARK: - Show Schedule Handling

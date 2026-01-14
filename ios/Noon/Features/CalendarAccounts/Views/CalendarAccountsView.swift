@@ -294,6 +294,11 @@ private final class MockCalendarService: CalendarServicing {
         )
         return CalendarCreateEventResponse(event: mockEvent)
     }
+
+    func deleteEvent(accessToken: String, calendarId: String, eventId: String) async throws {
+        // Mock implementation - just return success
+        print("Mock deleted event: \(eventId)")
+    }
 }
 
 private final class MockSessionProvider: AuthSessionProviding {

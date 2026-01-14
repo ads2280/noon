@@ -15,6 +15,7 @@ protocol CalendarServicing {
     func beginGoogleOAuth(accessToken: String) async throws -> GoogleOAuthStart
     func deleteCalendar(accessToken: String, accountId: String) async throws
     func createEvent(accessToken: String, request: CreateEventRequest) async throws -> CalendarCreateEventResponse
+    func deleteEvent(accessToken: String, calendarId: String, eventId: String) async throws
 }
 
 final class CalendarService: CalendarServicing {
@@ -180,6 +181,43 @@ final class CalendarService: CalendarServicing {
                 throw calendarError
             }
             calendarLogger.error("❌ Network error when creating event: \(String(describing: error))")
+            throw CalendarServiceError.network(error)
+        }
+    }
+
+    func deleteEvent(accessToken: String, calendarId: String, eventId: String) async throws {
+        var urlComponents = URLComponents(string: "/api/v1/calendars/events/\(eventId)")
+        urlComponents?.queryItems = [URLQueryItem(name: "calendar_id", value: calendarId)]
+        
+        guard let path = urlComponents?.url?.absoluteString else {
+            calendarLogger.error("❌ Invalid URL for delete event endpoint")
+            throw CalendarServiceError.invalidURL
+        }
+        
+        let request = try makeRequest(path: path, accessToken: accessToken, method: "DELETE")
+        
+        do {
+            let (_, response) = try await urlSession.data(for: request)
+            guard let httpResponse = response as? HTTPURLResponse else {
+                calendarLogger.error("❌ Non-HTTP response when deleting event")
+                throw CalendarServiceError.http(-1)
+            }
+
+            guard 200..<300 ~= httpResponse.statusCode else {
+                if httpResponse.statusCode == 401 {
+                    calendarLogger.error("🚫 Unauthorized when deleting event")
+                    throw CalendarServiceError.unauthorized
+                }
+                calendarLogger.error("❌ HTTP \(httpResponse.statusCode) when deleting event \(eventId, privacy: .private)")
+                throw CalendarServiceError.http(httpResponse.statusCode)
+            }
+
+            calendarLogger.debug("🗑️ Deleted event \(eventId, privacy: .public)")
+        } catch {
+            if let calendarError = error as? CalendarServiceError {
+                throw calendarError
+            }
+            calendarLogger.error("❌ Network error when deleting event \(eventId, privacy: .private): \(String(describing: error))")
             throw CalendarServiceError.network(error)
         }
     }
