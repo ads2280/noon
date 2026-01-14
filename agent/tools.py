@@ -132,14 +132,24 @@ def search_events(keywords: str, start_time: str, end_time: str) -> List[Dict[st
     """
     Search for events matching keywords within a time window.
     
+    IMPORTANT: Extract key terms from the user's query - don't use full phrases.
+    - Remove filler words like "meeting", "with", "my", "the", etc.
+    - Extract person names (e.g., "meeting with andrew" → "andrew")
+    - Extract event types (e.g., "my haircut appointment" → "haircut")
+    
     Args:
-        keywords: Space-separated keywords to search for
+        keywords: Key terms to search for (extracted from user query, not literal phrase)
+                  Examples: "andrew", "haircut", "jude andrew", "john smith"
+                  Bad examples: "meeting with andrew", "my haircut appointment"
         start_time: Timezone-aware ISO format datetime string with offset (e.g., "2026-01-14T00:00:00-08:00")
         end_time: Timezone-aware ISO format datetime string with offset (e.g., "2026-01-14T23:59:59-08:00")
     
     Returns:
         List of matching events with minimal details.
         All events include both id and calendar_id (required for event identification).
+        
+    Note: Google Calendar API searches for keywords/phrases in event titles, descriptions, and locations.
+          Use extracted key terms, not full natural language phrases.
     """
     try:
         auth = get_auth_context()

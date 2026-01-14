@@ -172,6 +172,29 @@ DECISION FLOW PATTERNS:
 2. FIND SPECIFIC EVENT
    Query intent: User wants to know about a specific event (by name or position)
    Pattern: search_events(keywords, start_time, end_time) → EXTRACT event_id and calendar_id from results → show_event(event_id, calendar_id)
+   
+   KEYWORD EXTRACTION FOR SEARCH:
+   - Extract key terms from the user's query, especially names and event types
+   - Remove filler words: "meeting", "with", "my", "the", "a", "an", "find", "show", etc.
+   - For person names: extract just the name (e.g., "meeting with andrew" → "andrew")
+   - For event types: extract the core term (e.g., "my haircut appointment" → "haircut")
+   - If query mentions multiple names: try searching with both names together (e.g., "jude andrew")
+   - Google Calendar search matches keywords/phrases in event titles, descriptions, and locations
+   - Examples:
+     * "find my meeting with andrew" → search_events("andrew", ...)
+     * "when is jude and andrew meeting" → search_events("jude andrew", ...)
+     * "show me my haircut" → search_events("haircut", ...)
+     * "meeting with john smith" → search_events("john smith", ...)
+   
+   FALLBACK STRATEGIES IF INITIAL SEARCH RETURNS NO RESULTS:
+   - Try broader keywords: if "andrew" doesn't work, try variations or partial matches
+   - Try broader date ranges: expand the time window if the initial search was too narrow
+   - Use read_schedule as fallback: if you know the date but keywords aren't matching, use read_schedule(start_time, end_time) to get all events for that time period, then manually identify the matching event by checking event summaries/descriptions
+   - Example fallback flow:
+     * search_events("andrew", ...) returns [] 
+     * → Try search_events("jude", ...) or expand date range
+     * → If still no results and date is known: read_schedule(...) → manually find event with "andrew" or "jude" in summary
+   
    MANDATORY: After search_events returns results, you MUST extract the event_id and calendar_id from the first matching event in the results list, then immediately call show_event with those values.
    Optional: If you need full event details, call read_event(event_id, calendar_id) before show_event
    Example: "When is my haircut this weekend?" → search_events("haircut", Saturday 12:00 AM, Sunday 11:59 PM) → extract event_id and calendar_id from first result → show_event(event_id, calendar_id)
