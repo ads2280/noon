@@ -27,7 +27,7 @@ final class AgentViewModel: ObservableObject {
     @Published private(set) var focusEvent: ScheduleFocusEvent?
 
     // Configuration for n-day schedule
-    var numberOfDays: Int = 1
+    var numberOfDays: Int = 2
 
     private weak var authProvider: AuthSessionProviding?
     private let recorder: AgentAudioRecorder
