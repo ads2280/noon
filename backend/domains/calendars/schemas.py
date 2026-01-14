@@ -97,3 +97,17 @@ class CreateEventRequest(BaseModel):
 
 class CreateEventResponse(BaseModel):
     event: CalendarEvent
+
+
+class UpdateEventRequest(BaseModel):
+    summary: Optional[str] = None
+    start: Optional[datetime] = None
+    end: Optional[datetime] = None
+    calendar_id: str = Field(..., min_length=1)
+    description: Optional[str] = None
+    location: Optional[str] = None
+    timezone: str = Field(default="UTC", min_length=1)
+
+
+class UpdateEventResponse(BaseModel):
+    event: CalendarEvent

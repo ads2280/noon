@@ -133,6 +133,8 @@ struct AgentView: View {
             return .createEvent
         case .deleteEvent:
             return .deleteEvent
+        case .updateEvent:
+            return .updateEvent
         }
     }
 

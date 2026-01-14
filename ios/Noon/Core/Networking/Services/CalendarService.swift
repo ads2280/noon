@@ -17,6 +17,7 @@ protocol CalendarServicing {
     func createEvent(accessToken: String, request: CreateEventRequest) async throws -> CalendarCreateEventResponse
     func deleteEvent(accessToken: String, calendarId: String, eventId: String) async throws
     func fetchEvent(accessToken: String, calendarId: String, eventId: String) async throws -> CalendarEvent
+    func updateEvent(accessToken: String, calendarId: String, eventId: String, request: UpdateEventRequest) async throws -> CalendarUpdateEventResponse
 }
 
 final class CalendarService: CalendarServicing {
@@ -266,6 +267,62 @@ final class CalendarService: CalendarServicing {
                 throw calendarError
             }
             calendarLogger.error("❌ Network error when fetching event \(eventId, privacy: .private): \(String(describing: error))")
+            throw CalendarServiceError.network(error)
+        }
+    }
+
+    func updateEvent(accessToken: String, calendarId: String, eventId: String, request: UpdateEventRequest) async throws -> CalendarUpdateEventResponse {
+        var urlComponents = URLComponents(string: "/api/v1/calendars/events/\(eventId)")
+        urlComponents?.queryItems = [URLQueryItem(name: "calendar_id", value: calendarId)]
+
+        guard let path = urlComponents?.url?.absoluteString else {
+            calendarLogger.error("❌ Invalid URL for update event endpoint")
+            throw CalendarServiceError.invalidURL
+        }
+
+        var urlRequest = try makeRequest(path: path, accessToken: accessToken, method: "PUT")
+
+        let encoder = JSONEncoder()
+        encoder.dateEncodingStrategy = .iso8601
+        encoder.keyEncodingStrategy = .convertToSnakeCase
+        urlRequest.httpBody = try encoder.encode(request)
+
+        do {
+            let (data, response) = try await urlSession.data(for: urlRequest)
+            guard let httpResponse = response as? HTTPURLResponse else {
+                calendarLogger.error("❌ Non-HTTP response when updating event")
+                throw CalendarServiceError.http(-1)
+            }
+
+            guard 200..<300 ~= httpResponse.statusCode else {
+                if httpResponse.statusCode == 401 {
+                    calendarLogger.error("🚫 Unauthorized when updating event")
+                    throw CalendarServiceError.unauthorized
+                }
+                if let payload = String(data: data, encoding: .utf8) {
+                    calendarLogger.error("❌ HTTP \(httpResponse.statusCode) when updating event: \(payload, privacy: .private)")
+                } else {
+                    calendarLogger.error("❌ HTTP \(httpResponse.statusCode) when updating event with empty body")
+                }
+                throw CalendarServiceError.http(httpResponse.statusCode)
+            }
+
+            do {
+                let decoder = JSONDecoder()
+                decoder.keyDecodingStrategy = .convertFromSnakeCase
+                decoder.dateDecodingStrategy = .iso8601
+                let updateResponse = try decoder.decode(CalendarUpdateEventResponse.self, from: data)
+                calendarLogger.debug("✅ Updated event \(eventId, privacy: .public)")
+                return updateResponse
+            } catch {
+                calendarLogger.error("❌ Decoding error when updating event: \(String(describing: error))")
+                throw CalendarServiceError.decoding(error)
+            }
+        } catch {
+            if let calendarError = error as? CalendarServiceError {
+                throw calendarError
+            }
+            calendarLogger.error("❌ Network error when updating event \(eventId, privacy: .private): \(String(describing: error))")
             throw CalendarServiceError.network(error)
         }
     }

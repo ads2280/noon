@@ -10,6 +10,7 @@ import SwiftUI
 enum ConfirmationActionType {
     case createEvent
     case deleteEvent
+    case updateEvent
 }
 
 struct ConfirmationModal: View {

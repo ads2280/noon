@@ -199,6 +199,141 @@ class CalendarService:
             supabase_calendar,
         )
 
+    async def update_event(
+        self,
+        *,
+        user_id: str,
+        calendar_id: str,
+        event_id: str,
+        summary: str | None = None,
+        start: datetime | None = None,
+        end: datetime | None = None,
+        description: str | None = None,
+        location: str | None = None,
+        timezone_name: str = "UTC",
+    ) -> Dict[str, Any]:
+        """Update an existing event in Google Calendar."""
+        contexts, calendars_by_id = await self._prepare_context(user_id)
+
+        # Find the account context that has access to this calendar
+        event_context: AccountContext | None = None
+        for context in contexts:
+            await self._hydrate_calendars([context])
+            for calendar in context.calendars:
+                if calendar.get("id") == calendar_id:
+                    event_context = context
+                    break
+            if event_context:
+                break
+
+        if event_context is None:
+            raise GoogleCalendarUserError(
+                f"Calendar {calendar_id} not found in any linked Google account."
+            )
+
+        # Fetch the current event to preserve fields that aren't being updated.
+        # Principle: Only update fields explicitly provided; leave everything else AS IS.
+        try:
+            current_event = await event_context.provider.get_event(
+                calendar_id=calendar_id,
+                event_id=event_id,
+            )
+        except GoogleCalendarAPIError as exc:
+            if exc.status_code == 401:
+                await self._handle_unauthorized(event_context)
+                current_event = await event_context.provider.get_event(
+                    calendar_id=calendar_id,
+                    event_id=event_id,
+                )
+            else:
+                raise GoogleCalendarServiceError(
+                    f"Failed to fetch event for update: {str(exc)}"
+                ) from exc
+
+        # Build update payload: only include fields to UPDATE, preserve everything else AS IS
+        event_data: Dict[str, Any] = {}
+
+        # Summary: update if provided, otherwise preserve existing
+        if summary is not None:
+            event_data["summary"] = summary
+        elif current_event.get("summary"):
+            event_data["summary"] = current_event["summary"]
+
+        tz = ZoneInfo(timezone_name)
+        # Start: update if provided, otherwise preserve existing (required by Google Calendar API)
+        if start is not None:
+            start_dt = start.replace(tzinfo=tz) if start.tzinfo is None else start.astimezone(tz)
+            event_data.setdefault("start", {})
+            event_data["start"]["dateTime"] = start_dt.isoformat()
+            event_data["start"]["timeZone"] = timezone_name
+        elif current_event.get("start"):
+            # Preserve existing start time
+            event_data["start"] = current_event["start"]
+
+        # End: update if provided, otherwise preserve existing (required by Google Calendar API)
+        if end is not None:
+            end_dt = end.replace(tzinfo=tz) if end.tzinfo is None else end.astimezone(tz)
+            event_data.setdefault("end", {})
+            event_data["end"]["dateTime"] = end_dt.isoformat()
+            event_data["end"]["timeZone"] = timezone_name
+        elif current_event.get("end"):
+            # Preserve existing end time
+            event_data["end"] = current_event["end"]
+
+        # Description: update if provided, otherwise preserve existing
+        if description is not None:
+            event_data["description"] = description
+        elif current_event.get("description"):
+            event_data["description"] = current_event["description"]
+
+        # Location: update if provided, otherwise preserve existing
+        if location is not None:
+            event_data["location"] = location
+        elif current_event.get("location"):
+            event_data["location"] = current_event["location"]
+
+        if not event_data:
+            raise GoogleCalendarUserError("No fields provided to update.")
+
+        # Update the event via provider
+        try:
+            updated_event = await event_context.provider.update_event(
+                calendar_id=calendar_id,
+                event_id=event_id,
+                event_data=event_data,
+            )
+        except GoogleCalendarAPIError as exc:
+            if exc.status_code == 401:
+                await self._handle_unauthorized(event_context)
+                updated_event = await event_context.provider.update_event(
+                    calendar_id=calendar_id,
+                    event_id=event_id,
+                    event_data=event_data,
+                )
+            else:
+                raise GoogleCalendarServiceError(
+                    f"Failed to update event in Google Calendar: {str(exc)}"
+                ) from exc
+
+        # Find the calendar in the context's calendars
+        calendar_dict: Dict[str, Any] | None = None
+        for cal in event_context.calendars:
+            if cal.get("id") == calendar_id:
+                calendar_dict = cal
+                break
+
+        if calendar_dict is None:
+            # Fallback if calendar not found in hydrated calendars
+            calendar_dict = {"id": calendar_id}
+
+        supabase_calendar = calendars_by_id.get(calendar_id)
+        return _build_event_payload(
+            updated_event,
+            calendar_dict,
+            event_context,
+            supabase_calendar,
+        )
+
     async def delete_event(
         self,
         *,

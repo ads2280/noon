@@ -324,6 +324,41 @@ private final class MockCalendarService: CalendarServicing {
             conference: nil
         )
     }
+
+    func updateEvent(
+        accessToken: String,
+        calendarId: String,
+        eventId: String,
+        request: UpdateEventRequest
+    ) async throws -> CalendarUpdateEventResponse {
+        // Mock implementation - simulate an updated event with any provided fields
+        let now = Date()
+        let updatedStart = request.start ?? now
+        let updatedEnd = request.end ?? now.addingTimeInterval(3600)
+
+        let mockEvent = CalendarEvent(
+            id: eventId,
+            title: request.summary ?? "Updated Mock Event",
+            description: request.description,
+            start: CalendarEvent.EventDateTime(
+                dateTime: updatedStart,
+                date: nil,
+                timeZone: request.timezone
+            ),
+            end: CalendarEvent.EventDateTime(
+                dateTime: updatedEnd,
+                date: nil,
+                timeZone: request.timezone
+            ),
+            attendees: [],
+            createdBy: nil,
+            calendarId: calendarId,
+            location: request.location,
+            conference: nil
+        )
+
+        return CalendarUpdateEventResponse(event: mockEvent)
+    }
 }
 
 private final class MockSessionProvider: AuthSessionProviding {

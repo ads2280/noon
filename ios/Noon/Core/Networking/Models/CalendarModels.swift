@@ -269,3 +269,51 @@ struct CreateEventRequest: Encodable {
 struct CalendarCreateEventResponse: Decodable {
     let event: CalendarEvent
 }
+
+struct UpdateEventRequest: Encodable {
+    let summary: String?
+    let start: Date?
+    let end: Date?
+    let calendarId: String
+    let description: String?
+    let location: String?
+    let timezone: String
+
+    enum CodingKeys: String, CodingKey {
+        case summary
+        case start
+        case end
+        case calendarId = "calendar_id"
+        case description
+        case location
+        case timezone
+    }
+    
+    func encode(to encoder: Encoder) throws {
+        var container = encoder.container(keyedBy: CodingKeys.self)
+        
+        // Only encode non-nil optional values
+        if let summary = summary {
+            try container.encode(summary, forKey: .summary)
+        }
+        if let start = start {
+            try container.encode(start, forKey: .start)
+        }
+        if let end = end {
+            try container.encode(end, forKey: .end)
+        }
+        // Always encode required fields
+        try container.encode(calendarId, forKey: .calendarId)
+        if let description = description {
+            try container.encode(description, forKey: .description)
+        }
+        if let location = location {
+            try container.encode(location, forKey: .location)
+        }
+        try container.encode(timezone, forKey: .timezone)
+    }
+}
+
+struct CalendarUpdateEventResponse: Decodable {
+    let event: CalendarEvent
+}

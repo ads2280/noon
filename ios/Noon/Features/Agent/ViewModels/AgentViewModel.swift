@@ -31,6 +31,7 @@ final class AgentViewModel: ObservableObject {
     enum PendingAction {
         case createEvent(CreateEventResponse)
         case deleteEvent(DeleteEventResponse)
+        case updateEvent(UpdateEventResponse)
     }
 
     // Configuration for n-day schedule
@@ -86,7 +87,6 @@ final class AgentViewModel: ObservableObject {
         Task { @MainActor in
             do {
                 try await recorder.startRecording()
-                print("Recording started")
             } catch {
                 handle(error: error)
             }
@@ -100,7 +100,6 @@ final class AgentViewModel: ObservableObject {
 
         Task { @MainActor in
             do {
-                print("Stopping recording and sending to agent…")
                 guard let recording = try await recorder.stopRecording() else {
                     displayState = .idle
                     return
@@ -110,19 +109,16 @@ final class AgentViewModel: ObservableObject {
                 let startingToken = try await resolveAccessToken(initial: accessToken)
 
                 displayState = .uploading
-                print("Recorded audio duration: \(recording.duration)s")
                 
                 // Step 1: Transcribe audio
-                print("Transcribing audio...")
                 let transcriptionResult = try await transcribeAudio(
                     recording: recording,
                     accessToken: startingToken
                 )
                 let transcribedText = transcriptionResult.text
-                print("Transcribed text: \"\(transcribedText)\"")
+                print("Transcribed: \"\(transcribedText)\"")
                 
                 // Step 2: Send to agent
-                print("Sending to agent...")
                 let (result, tokenUsed) = try await sendToAgent(
                     query: transcribedText,
                     accessToken: startingToken
@@ -134,8 +130,6 @@ final class AgentViewModel: ObservableObject {
 
                 if let responseString = result.responseString {
                     print("Agent response (\(result.statusCode)): \(responseString)")
-                } else {
-                    print("Agent response (\(result.statusCode)) received (\(result.data.count) bytes)")
                 }
             } catch {
                 handle(error: error)
@@ -181,16 +175,11 @@ final class AgentViewModel: ObservableObject {
         focusEvent: ScheduleFocusEvent? = nil
     ) {
         guard isLoadingSchedule == false else {
-            print("loadSchedule: Already loading, skipping")
             return
         }
         if force == false, calendar.isDate(scheduleDate, inSameDayAs: date), isLoadingSchedule {
-            print("loadSchedule: Same date and not forced, skipping")
             return
         }
-
-        let dateString = Self.iso8601DateFormatter.string(from: date)
-        print("loadSchedule: Loading schedule for date: \(dateString), force: \(force)")
 
         Task { @MainActor in
             isLoadingSchedule = true
@@ -204,8 +193,6 @@ final class AgentViewModel: ObservableObject {
                 let startDateISO = Self.iso8601DateFormatter.string(from: dateRange.start)
                 let endDateISO = Self.iso8601DateFormatter.string(from: dateRange.end)
                 
-                print("loadSchedule: Fetching events from \(startDateISO) to \(endDateISO)")
-                
                 let token = try await resolveAccessToken(initial: initialToken)
                 let events = try await fetchScheduleEvents(
                     startDateISO: startDateISO,
@@ -213,14 +200,13 @@ final class AgentViewModel: ObservableObject {
                     accessToken: token
                 )
 
-                print("loadSchedule: Loaded \(events.count) events")
+                print("Loaded schedule: \(events.count) events")
                 scheduleDate = dateRange.start
                 displayEvents = events
                 self.focusEvent = focusEvent
                 hasLoadedSchedule = true
-                print("loadSchedule: hasLoadedSchedule set to true, scheduleDate: \(Self.iso8601DateFormatter.string(from: scheduleDate)), displayEvents count: \(displayEvents.count), focusEvent: \(focusEvent?.eventID ?? "nil")")
             } catch {
-                print("loadSchedule: Error loading schedule: \(error)")
+                print("Error loading schedule: \(error)")
                 handle(error: error)
             }
         }
@@ -292,7 +278,6 @@ final class AgentViewModel: ObservableObject {
             )
         } catch let error as ServerError where error.statusCode == 401 {
             // Token expired - refresh and retry once
-            print("Got 401 during transcription, refreshing token and retrying...")
             guard let refreshedToken = await AuthTokenProvider.shared.currentAccessToken() else {
                 throw AccessTokenError.missingAuthProvider
             }
@@ -317,7 +302,6 @@ final class AgentViewModel: ObservableObject {
             return (result, accessToken)
         } catch let error as ServerError where error.statusCode == 401 {
             // Token expired - refresh and retry once
-            print("Got 401 during agent request, refreshing token and retrying...")
             guard let refreshedToken = await AuthTokenProvider.shared.currentAccessToken() else {
                 throw AccessTokenError.missingAuthProvider
             }
@@ -344,7 +328,6 @@ final class AgentViewModel: ObservableObject {
             return schedule.events.map { DisplayEvent(event: $0) }
         } catch GoogleCalendarScheduleServiceError.unauthorized {
             // Token expired - refresh and retry once
-            print("Got 401 fetching schedule, refreshing token and retrying...")
             guard let refreshedToken = await AuthTokenProvider.shared.currentAccessToken() else {
                 throw AccessTokenError.missingAuthProvider
             }
@@ -376,9 +359,7 @@ final class AgentViewModel: ObservableObject {
         
         // Use the day of the event's start date
         let eventDay = calendar.startOfDay(for: eventStartDate)
-        let dateString = Self.iso8601DateFormatter.string(from: eventDay)
-        print("Show event called for event: \(eventID), day: \(dateString)")
-        
+
         // Load schedule for the event's day with highlight focus
         loadSchedule(
             for: eventDay,
@@ -407,9 +388,7 @@ final class AgentViewModel: ObservableObject {
         
         // Use the day of the event's start date
         let eventDay = calendar.startOfDay(for: eventStartDate)
-        let dateString = Self.iso8601DateFormatter.string(from: eventDay)
-        print("Delete event called for event: \(eventID), day: \(dateString)")
-        
+
         // Store the pending delete event response for confirmation
         self.pendingAction = .deleteEvent(response)
         
@@ -447,9 +426,7 @@ final class AgentViewModel: ObservableObject {
         
         // Use the day of the event's start date
         let eventDay = calendar.startOfDay(for: eventStartDate)
-        let dateString = Self.iso8601DateFormatter.string(from: eventDay)
-        print("Update event called for event: \(eventID), day: \(dateString)")
-        
+
         // Load schedule for the event's day with update focus
         loadSchedule(
             for: eventDay,
@@ -457,6 +434,9 @@ final class AgentViewModel: ObservableObject {
             accessToken: accessToken,
             focusEvent: ScheduleFocusEvent(eventID: eventID, style: .update)
         )
+
+        // Store the pending update event response for confirmation
+        self.pendingAction = .updateEvent(response)
     }
 
     // MARK: - Create Event Handling
@@ -468,9 +448,7 @@ final class AgentViewModel: ObservableObject {
         
         // Use the day of the event's start date
         let eventDay = calendar.startOfDay(for: startDate)
-        let dateString = Self.iso8601DateFormatter.string(from: eventDay)
-        print("Create event called for event: \(metadata.summary), day: \(dateString)")
-        
+
         // Fetch the schedule for that day
         let dateRange = self.dateRange(for: eventDay)
         let startDateISO = Self.iso8601DateFormatter.string(from: dateRange.start)
@@ -532,14 +510,11 @@ final class AgentViewModel: ObservableObject {
         
         // Store the pending create event response for confirmation
         self.pendingAction = .createEvent(response)
-        
-        print("Create event: Set schedule with \(displayEvents.count) events, scheduleDate: \(Self.iso8601DateFormatter.string(from: scheduleDate)), hasLoadedSchedule: \(hasLoadedSchedule)")
     }
 
     // MARK: - Event Confirmation
     func confirmPendingAction(accessToken: String?) async {
         guard let action = pendingAction else {
-            print("confirmPendingAction: No pending action to confirm")
             return
         }
         
@@ -554,6 +529,8 @@ final class AgentViewModel: ObservableObject {
             await confirmCreateEvent(response: response, accessToken: accessToken)
         case .deleteEvent(let response):
             await confirmDeleteEvent(response: response, accessToken: accessToken)
+        case .updateEvent(let response):
+            await confirmUpdateEvent(response: response, accessToken: accessToken)
         }
     }
     
@@ -571,12 +548,13 @@ final class AgentViewModel: ObservableObject {
         case .deleteEvent:
             // Clear the focus event to remove destructive style
             focusEvent = nil
+        case .updateEvent:
+            // Clear the focus event to remove update style
+            focusEvent = nil
         }
         
         // Clear pending action
         pendingAction = nil
-        
-        print("cancelPendingAction: Cancelled pending action")
     }
     
     private func confirmCreateEvent(response: CreateEventResponse, accessToken: String?) async {
@@ -621,9 +599,60 @@ final class AgentViewModel: ObservableObject {
                     focusEvent: nil
                 )
                 
-                print("confirmCreateEvent: Successfully created event \(createdEventID) and reloaded schedule")
+                print("Created event: \(createdEventID)")
             } catch {
-                print("confirmCreateEvent: Error creating event: \(error)")
+                print("Error creating event: \(error)")
+                handle(error: error)
+            }
+        }
+    }
+
+    private func confirmUpdateEvent(response: UpdateEventResponse, accessToken: String?) async {
+        let metadata = response.metadata
+        let eventID = metadata.event_id
+        let calendarID = metadata.calendar_id
+
+        Task { @MainActor in
+            do {
+                let token = try await resolveAccessToken(initial: accessToken)
+
+                // Build update request from metadata (only include fields that are present)
+                let timezone = TimeZone.autoupdatingCurrent.identifier
+                let updateRequest = UpdateEventRequest(
+                    summary: metadata.summary,
+                    start: metadata.start?.dateTime,
+                    end: metadata.end?.dateTime,
+                    calendarId: calendarID,
+                    description: metadata.description,
+                    location: metadata.location,
+                    timezone: timezone
+                )
+
+                // Call calendar service to apply the update
+                _ = try await calendarService.updateEvent(
+                    accessToken: token,
+                    calendarId: calendarID,
+                    eventId: eventID,
+                    request: updateRequest
+                )
+
+                // Determine the day of the updated event using metadata if available
+                if let startFromMetadata = metadata.start?.dateTime {
+                    let eventDay = calendar.startOfDay(for: startFromMetadata)
+                    loadSchedule(
+                        for: eventDay,
+                        force: true,
+                        accessToken: token,
+                        focusEvent: nil
+                    )
+                } else {
+                    // Fallback: reload current schedule if we don't have a start date
+                    loadCurrentDaySchedule(force: true)
+                }
+
+                print("Updated event: \(eventID)")
+            } catch {
+                print("Error updating event: \(error)")
                 handle(error: error)
             }
         }
@@ -663,9 +692,9 @@ final class AgentViewModel: ObservableObject {
                     loadCurrentDaySchedule(force: true)
                 }
                 
-                print("confirmDeleteEvent: Successfully deleted event \(eventID) and reloaded schedule")
+                print("Deleted event: \(eventID)")
             } catch {
-                print("confirmDeleteEvent: Error deleting event: \(error)")
+                print("Error deleting event: \(error)")
                 handle(error: error)
             }
         }
@@ -674,8 +703,6 @@ final class AgentViewModel: ObservableObject {
     // MARK: - Show Schedule Handling
     private func handleShowSchedule(agentResponse: AgentResponse, accessToken: String) async throws {
         let config = showScheduleHandler.configuration(for: agentResponse)
-        let dateString = Self.iso8601DateFormatter.string(from: config.date)
-        print("Show schedule called for day: \(dateString)")
         loadSchedule(
             for: config.date,
             force: true,
