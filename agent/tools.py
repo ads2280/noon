@@ -299,12 +299,17 @@ def request_create_event(
     """
     Request to create a new event. This terminates the agent.
     
+    IMPORTANT: Only include description if:
+    - The user explicitly requests a description in their query
+    - The description is necessary for clarity (e.g., meeting agenda, important notes)
+    - Do NOT add descriptions automatically or make them up
+    
     Args:
         summary: Title/summary of the event
         start_time: Timezone-aware ISO format datetime string with offset (e.g., "2026-01-14T10:00:00-08:00")
         end_time: Timezone-aware ISO format datetime string with offset (e.g., "2026-01-14T11:00:00-08:00")
         calendar_id: ID of the calendar to create the event on
-        description: Optional description of the event
+        description: Optional description of the event. Only include if explicitly requested or necessary.
         location: Optional location for the event
     
     Returns:
@@ -340,13 +345,18 @@ def request_update_event(
     """
     Request to update an existing event. This terminates the agent.
     
+    IMPORTANT: Only include description if:
+    - The user explicitly requests to update or add a description
+    - The description change is necessary for clarity
+    - Do NOT add or modify descriptions automatically or make them up
+    
     Args:
         event_id: The ID of the event to update
         calendar_id: The ID of the calendar containing the event
         summary: Optional new summary/title
         start_time: Optional new start time (timezone-aware ISO format datetime string with offset, e.g., "2026-01-14T10:00:00-08:00")
         end_time: Optional new end time (timezone-aware ISO format datetime string with offset, e.g., "2026-01-14T11:00:00-08:00")
-        description: Optional new description
+        description: Optional new description. Only include if explicitly requested or necessary.
         location: Optional new location
     
     Returns:

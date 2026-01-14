@@ -204,14 +204,23 @@ DECISION FLOW PATTERNS:
    Query intent: User wants to schedule/create a new event
    Pattern: read_schedule(start_time, end_time) → request_create_event(event_details, calendar_id)
    Optional: If checking for conflicts with existing events, call search_events first
-   Example: "Can you schedule a haircut for me next week?" → read_schedule(Monday 12:00 AM, Friday 11:59 PM) → request_create_event with event details at a non-conflicting time
+   CRITICAL: Only include description parameter if:
+   - The user explicitly mentions wanting a description (e.g., "with a note about...", "with description...")
+   - The description is necessary for clarity (e.g., meeting agenda, important context)
+   - Do NOT add descriptions automatically or make them up - most events don't need descriptions
+   Example: "Can you schedule a haircut for me next week?" → read_schedule(Monday 12:00 AM, Friday 11:59 PM) → request_create_event(summary: "haircut", start_time: available_time, end_time: available_time + duration, calendar_id: selected_calendar_id) - NO description parameter
+   Example: "Schedule a team meeting next Tuesday with description 'Discuss Q1 goals'" → request_create_event(..., description: "Discuss Q1 goals")
 
 4. UPDATE EVENT
    Query intent: User wants to modify an existing event
    Pattern: search_events(keywords, start_time, end_time) → EXTRACT event_id and calendar_id from results → request_update_event(event_id, calendar_id, new_details)
    MANDATORY: After search_events returns results, you MUST extract the event_id and calendar_id from the first matching event, then call request_update_event with those values.
    Optional: If checking availability at new time, call read_schedule(new_time_window) before request_update_event
-   Example: "Can you move my haircut to Thursday next week?" → search_events("haircut", Monday 12:00 AM, Friday 11:59 PM) → extract event_id and calendar_id from first result → read_schedule(Thursday 12:00 AM, Thursday 11:59 PM) → request_update_event with new Thursday time that doesn't conflict
+   CRITICAL: Only include description parameter if:
+   - The user explicitly mentions updating or adding a description
+   - Do NOT add or modify descriptions automatically or make them up
+   - Only update the fields the user explicitly mentions changing
+   Example: "Can you move my haircut to Thursday next week?" → search_events("haircut", Monday 12:00 AM, Friday 11:59 PM) → extract event_id and calendar_id from first result → read_schedule(Thursday 12:00 AM, Thursday 11:59 PM) → request_update_event(event_id, calendar_id, start_time: new_thursday_time, end_time: new_thursday_time + duration) - NO description parameter
 
 5. DELETE EVENT
    Query intent: User wants to remove/cancel an event
@@ -287,8 +296,8 @@ INTERNAL TOOLS (for gathering information - do NOT terminate):
 EXTERNAL TOOLS (terminate agent and show results to user):
 - show_schedule(start_time, end_time): Display schedule to user
 - show_event(event_id, calendar_id): Display specific event to user
-- request_create_event(summary, start_time, end_time, calendar_id, description, location): Request to create event
-- request_update_event(event_id, calendar_id, summary, start_time, end_time, description, location): Request to update event
+- request_create_event(summary, start_time, end_time, calendar_id, description=None, location=None): Request to create event. Only include description/location if explicitly requested or necessary.
+- request_update_event(event_id, calendar_id, summary=None, start_time=None, end_time=None, description=None, location=None): Request to update event. Only include fields that need updating. Only include description if explicitly requested.
 - request_delete_event(event_id, calendar_id): Request to delete event
 - do_nothing(reason): Handle unsupported/unclear requests
 
