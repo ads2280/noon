@@ -6,6 +6,7 @@
 //
 
 import SwiftUI
+import UIKit
 
 struct AgentView: View {
     @StateObject private var viewModel = AgentViewModel()
@@ -39,6 +40,12 @@ struct AgentView: View {
                     Color.clear
                         .frame(height: 24)
                     
+                    // Transcription text above microphone
+                    TranscriptionDisplay(text: viewModel.transcriptionText)
+                    
+                    // Notice display for errors and no-action responses
+                    NoticeDisplay(message: viewModel.noticeMessage)
+                    
                     microphoneButton
                         .padding(.horizontal, 24)
                 }
@@ -68,6 +75,8 @@ struct AgentView: View {
                 }
             }
             .animation(.spring(response: 0.3, dampingFraction: 0.8), value: viewModel.agentAction?.requiresConfirmation == true)
+            .animation(.easeInOut(duration: 0.2), value: viewModel.transcriptionText != nil)
+            .animation(.easeInOut(duration: 0.2), value: viewModel.noticeMessage != nil)
         }
         .onReceive(viewModel.$displayState) { state in
             handleDisplayStateChange(state)
@@ -116,9 +125,17 @@ struct AgentView: View {
             pressing: { pressing in
                 if pressing && isPressingMic == false {
                     isPressingMic = true
+                    // Haptic feedback when mic starts listening
+                    let generator = UIImpactFeedbackGenerator(style: .medium)
+                    generator.prepare()
+                    generator.impactOccurred()
                     viewModel.startRecording()
                 } else if pressing == false && isPressingMic {
                     isPressingMic = false
+                    // Haptic feedback when releasing the button
+                    let generator = UIImpactFeedbackGenerator(style: .medium)
+                    generator.prepare()
+                    generator.impactOccurred()
                     viewModel.stopAndSendRecording(accessToken: authViewModel.session?.accessToken)
                 }
             },

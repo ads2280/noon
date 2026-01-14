@@ -27,6 +27,10 @@ final class AgentViewModel: ObservableObject {
     @Published private(set) var focusEvent: ScheduleFocusEvent?
     @Published var agentAction: AgentAction?
     @Published var isConfirmingAction: Bool = false
+    @Published var transcriptionText: String?
+    @Published var noticeMessage: String?
+    
+    private var noticeDismissTask: Task<Void, Never>?
     
     enum AgentAction {
         case showEvent(ShowEventResponse)
@@ -113,6 +117,8 @@ final class AgentViewModel: ObservableObject {
 
         isRecording = true
         displayState = .recording
+        transcriptionText = nil // Clear previous transcription when starting new recording
+        noticeMessage = nil // Clear previous notice when starting new recording
 
         Task { @MainActor in
             do {
@@ -146,7 +152,13 @@ final class AgentViewModel: ObservableObject {
                     accessToken: startingToken
                 )
                 let transcribedText = transcriptionResult.text
+                transcriptionText = transcribedText // Store transcription for display
                 print("Transcribed: \"\(transcribedText)\"")
+                
+                // Clear any existing highlights, notices, or confirmations from previous agent action state
+                agentAction = nil
+                focusEvent = nil
+                noticeMessage = nil
                 
                 // Step 2: Send to agent
                 let (result, tokenUsed) = try await sendToAgent(
@@ -156,7 +168,23 @@ final class AgentViewModel: ObservableObject {
 
                 try await handle(agentResponse: result.agentResponse, accessToken: tokenUsed)
 
+                // Clear transcription text when agent response arrives
+                transcriptionText = nil
+
                 displayState = .completed(result: result)
+                
+                // Set notice message for no-action and error responses (after clearing transcription)
+                switch result.agentResponse {
+                case .noAction(let response):
+                    setNoticeMessage(response.metadata.reason)
+                    print("Notice message set for no-action: \(response.metadata.reason)")
+                case .error(let error):
+                    setNoticeMessage(error.message)
+                    print("Notice message set for error: \(error.message)")
+                default:
+                    // Clear notice message for successful actions
+                    clearNoticeMessage()
+                }
 
                 if let responseString = result.responseString {
                     print("Agent response (\(result.statusCode)): \(responseString)")
@@ -170,11 +198,38 @@ final class AgentViewModel: ObservableObject {
     func reset() {
         displayState = .idle
         isRecording = false
+        transcriptionText = nil
+        clearNoticeMessage()
+    }
+    
+    private func setNoticeMessage(_ message: String) {
+        // Cancel any existing dismiss task
+        noticeDismissTask?.cancel()
+        
+        // Set the notice message
+        noticeMessage = message
+        
+        // Schedule automatic dismissal after 2 seconds
+        noticeDismissTask = Task { @MainActor in
+            try? await Task.sleep(nanoseconds: 2_000_000_000) // 2 seconds
+            if !Task.isCancelled {
+                noticeMessage = nil
+            }
+        }
+    }
+    
+    private func clearNoticeMessage() {
+        noticeDismissTask?.cancel()
+        noticeDismissTask = nil
+        noticeMessage = nil
     }
 
     private func handle(error: Error) {
-        displayState = .failed(message: localizedMessage(for: error))
+        let errorMessage = localizedMessage(for: error)
+        displayState = .failed(message: errorMessage)
+        setNoticeMessage(errorMessage)
         isRecording = false
+        // Keep transcriptionText visible even on error, as transcription may have succeeded
         if let serverError = error as? ServerError {
             print("Request failed (\(serverError.statusCode)): \(serverError.message)")
         } else {
@@ -276,9 +331,12 @@ final class AgentViewModel: ObservableObject {
             try await handleUpdateEvent(response: response, accessToken: accessToken)
         case .createEvent(let response):
             try await handleCreateEvent(response: response, accessToken: accessToken)
-        default:
-            // TODO: Handle additional agent response types
-            break
+        case .noAction(let response):
+            setNoticeMessage(response.metadata.reason)
+            print("Setting notice message for no-action: \(response.metadata.reason)")
+        case .error(let error):
+            setNoticeMessage(error.message)
+            print("Setting notice message for error: \(error.message)")
         }
     }
 

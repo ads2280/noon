@@ -45,6 +45,11 @@ final class AgentAudioRecorder: NSObject, ObservableObject {
             // Set category before activating to reduce configuration warnings
             try session.setCategory(.playAndRecord, mode: .spokenAudio, options: [.defaultToSpeaker, .duckOthers])
             
+            // Allow haptics and system sounds during recording (iOS 13.0+)
+            if #available(iOS 13.0, *) {
+                try session.setAllowHapticsAndSystemSoundsDuringRecording(true)
+            }
+            
             // Handle activation gracefully to reduce HAL warnings in Simulator
             #if targetEnvironment(simulator)
             // In Simulator, use try? to suppress harmless audio device warnings
