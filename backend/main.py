@@ -4,11 +4,10 @@ from __future__ import annotations
 
 from contextlib import asynccontextmanager
 
-from fastapi import FastAPI, Query
+from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from api.v1.router import router as v1_router
-from api.v1.calendars import oauth_callback
 from core.logging import setup_logging, get_logger
 from core.middleware import RequestLoggingMiddleware
 
@@ -47,25 +46,6 @@ app.add_middleware(RequestLoggingMiddleware)
 
 # Include API router
 app.include_router(v1_router, prefix="/api/v1")
-
-
-# TEMPORARY: Legacy OAuth callback route for backwards compatibility
-# TODO: Remove this route after updating Google OAuth Console redirect URI
-# The correct route is: /api/v1/calendars/accounts/oauth/callback
-# This route exists only to support the old redirect URI: /google-accounts/oauth/callback
-# See instructions in README or docs for updating GCP OAuth configuration
-@app.get("/google-accounts/oauth/callback", include_in_schema=False)
-async def legacy_oauth_callback(
-    state: str = Query(...), code: str = Query(...)
-):
-    """
-    TEMPORARY legacy OAuth callback route.
-    
-    This route forwards to the actual callback handler at /api/v1/calendars/accounts/oauth/callback.
-    This is a temporary compatibility layer - update your Google OAuth Console redirect URI
-    to use the correct route and remove this handler.
-    """
-    return await oauth_callback(state=state, code=code)
 
 
 @app.get("/healthz")
