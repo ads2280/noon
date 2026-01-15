@@ -89,6 +89,10 @@ struct AgentView: View {
                 try? await viewModel.loadCurrentDaySchedule()
             }
         }
+        .onDisappear {
+            // Cleanup audio session when view disappears to free up resources
+            viewModel.cleanupAudioSession()
+        }
     }
 
     private var microphoneButton: some View {

@@ -106,10 +106,17 @@ final class AgentViewModel: ObservableObject {
         self.scheduleDate = calendar.startOfDay(for: initialScheduleDate)
         self.displayEvents = initialDisplayEvents ?? []
         self.hasLoadedSchedule = !(initialDisplayEvents?.isEmpty ?? true)
+        
+        // Pre-warm audio session to eliminate delay on first recording
+        self.recorder.prewarm()
     }
 
     func configure(authProvider: AuthSessionProviding) {
         self.authProvider = authProvider
+    }
+    
+    func cleanupAudioSession() {
+        recorder.cleanup()
     }
 
     func startRecording() {

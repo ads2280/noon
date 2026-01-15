@@ -126,6 +126,11 @@ class AuthRepository:
         try:
             result = client.table("users").select("*").eq("id", user_id).execute()
         except APIError as exc:
+            # Check if the error is related to JWT expiration
+            # Supabase may return JWT errors even with service role key if RLS is checking
+            error_message = str(exc.message).lower()
+            if exc.code == "PGRST303" or "jwt expired" in error_message:
+                raise SupabaseAuthError("Token has expired") from exc
             raise SupabaseStorageError(f"Failed to fetch user: {exc.message}") from exc
 
         if not result.data:

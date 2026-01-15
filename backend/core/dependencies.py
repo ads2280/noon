@@ -8,7 +8,7 @@ from fastapi import Depends, HTTPException, Request, status
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 
 from domains.auth.repository import AuthRepository
-from utils.errors import SupabaseAuthError
+from utils.errors import SupabaseAuthError, SupabaseStorageError
 
 security = HTTPBearer()
 
@@ -33,6 +33,18 @@ async def get_current_user(
             detail=str(exc),
             headers={"WWW-Authenticate": "Bearer"},
         ) from exc
+    except SupabaseStorageError as exc:
+        # Check if the storage error is actually an auth error (e.g., JWT expired)
+        # This can happen if Supabase returns JWT errors during database queries
+        error_msg = str(exc).lower()
+        if "jwt" in error_msg or "expired" in error_msg or "unauthorized" in error_msg:
+            raise HTTPException(
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                detail="Authentication token has expired. Please refresh your session.",
+                headers={"WWW-Authenticate": "Bearer"},
+            ) from exc
+        # If it's a real storage error, re-raise as 500
+        raise
 
     if not user or not user.get("id"):
         raise HTTPException(
