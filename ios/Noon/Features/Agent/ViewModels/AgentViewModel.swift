@@ -599,9 +599,19 @@ final class AgentViewModel: ObservableObject {
             accessToken: accessToken
         )
         
-        // Find and hide the original event in displayEvents
-        if let originalIndex = displayEvents.firstIndex(where: { $0.event.id == eventID }) {
-            displayEvents[originalIndex].isHidden = true
+        // Find and hide ALL instances of the original event in displayEvents
+        // Match on event ID only (regardless of calendar) to ensure we hide the original event
+        for index in displayEvents.indices.reversed() {
+            if displayEvents[index].event.id == eventID && !displayEvents[index].isHidden {
+                // Create a new DisplayEvent with isHidden=true to ensure SwiftUI detects the change
+                let originalEvent = displayEvents[index].event
+                let originalStyle = displayEvents[index].style
+                displayEvents[index] = DisplayEvent(
+                    event: originalEvent,
+                    style: originalStyle,
+                    isHidden: true
+                )
+            }
         }
         
         // Create preview DisplayEvent with .update style
@@ -757,9 +767,15 @@ final class AgentViewModel: ObservableObject {
                 displayEvents.remove(at: previewIndex)
             }
             
-            // Unhide the original event
+            // Unhide the original event - create new instance to ensure SwiftUI detects the change
             if let originalIndex = displayEvents.firstIndex(where: { $0.event.id == eventID && $0.isHidden }) {
-                displayEvents[originalIndex].isHidden = false
+                let originalEvent = displayEvents[originalIndex].event
+                let originalStyle = displayEvents[originalIndex].style
+                displayEvents[originalIndex] = DisplayEvent(
+                    event: originalEvent,
+                    style: originalStyle,
+                    isHidden: false
+                )
             }
             
             focusEvent = nil

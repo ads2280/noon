@@ -185,7 +185,7 @@ private extension CalendarAccountsView {
                         .font(.system(size: 18, weight: .semibold))
                 }
                 .buttonStyle(.plain)
-                .foregroundStyle(ColorPalette.Surface.destructiveMuted)
+                .foregroundStyle(ColorPalette.Semantic.destructive)
                 .accessibilityLabel("Remove \(account.email)")
             }
         }
