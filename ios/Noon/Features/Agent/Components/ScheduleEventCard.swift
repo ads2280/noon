@@ -18,8 +18,6 @@ struct ScheduleEventCard: View {
     }
 
     let title: String
-    let timeRange: String
-    let showTimeRange: Bool
     let cornerRadius: CGFloat
     let style: Style
 
@@ -63,29 +61,19 @@ struct ScheduleEventCard: View {
                 GeometryReader { proxy in
                     let metrics = contentMetrics(for: proxy.size.height)
 
-                    VStack(alignment: .leading, spacing: metrics.spacing) {
-                        Text(title)
-                            .font(.caption.weight(.semibold))
-                            .foregroundStyle(textColor)
-                            .strikethrough(style == .destructive, color: strikeColor)
-                            .lineLimit(1)
-                            .minimumScaleFactor(0.85)
-
-                        if metrics.shouldShowTime {
-                            Text(timeRange)
-                                .font(.caption.weight(.medium))
-                                .foregroundStyle(secondaryTextColor)
-                                .strikethrough(style == .destructive, color: strikeColor)
-                                .lineLimit(1)
-                                .minimumScaleFactor(0.85)
-                        }
-                    }
-                    .frame(maxWidth: .infinity, alignment: .leading)
-                    .padding(.horizontal, metrics.horizontalPadding)
-                    .padding(.top, metrics.topPadding)
-                    .padding(.bottom, metrics.bottomPadding)
-                    .frame(width: proxy.size.width, height: proxy.size.height, alignment: .topLeading)
+                    Text(title)
+                        .font(.caption.weight(.semibold))
+                        .foregroundStyle(textColor)
+                        .strikethrough(style == .destructive, color: strikeColor)
+                        .lineLimit(1)
+                        .minimumScaleFactor(0.85)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                        .padding(.horizontal, metrics.horizontalPadding)
+                        .padding(.top, metrics.topPadding)
+                        .padding(.bottom, metrics.bottomPadding)
+                        .frame(width: proxy.size.width, height: proxy.size.height, alignment: .topLeading)
                 }
+                .clipShape(shape)
             }
             .overlay { borderOverlay }
             .shadow(
@@ -107,8 +95,6 @@ private extension ScheduleEventCard {
         let topPadding: CGFloat
         let bottomPadding: CGFloat
         let horizontalPadding: CGFloat
-        let spacing: CGFloat
-        let shouldShowTime: Bool
     }
 
     var textColor: Color {
@@ -158,17 +144,9 @@ private extension ScheduleEventCard {
     func contentMetrics(for availableHeight: CGFloat) -> ContentMetrics {
         let baseHorizontalPadding: CGFloat = 12
         let baseVerticalPadding: CGFloat = 8
-        let baseSpacing: CGFloat = 4
 
         let titleLineHeight = UIFont.preferredFont(forTextStyle: .caption1).lineHeight
-        let timeLineHeight = UIFont.preferredFont(forTextStyle: .caption1).lineHeight
-
-        let canShowTimeInitially = showTimeRange
-        let contentHeightWithTime = titleLineHeight + baseSpacing + timeLineHeight
-
-        let shouldShowTime = canShowTimeInitially && contentHeightWithTime <= availableHeight
-        let spacing = shouldShowTime ? baseSpacing : 0
-        let contentHeight = titleLineHeight + (shouldShowTime ? spacing + timeLineHeight : 0)
+        let contentHeight = titleLineHeight
 
         let remainingHeight = availableHeight - contentHeight
 
@@ -187,9 +165,7 @@ private extension ScheduleEventCard {
         return ContentMetrics(
             topPadding: topPadding,
             bottomPadding: bottomPadding,
-            horizontalPadding: baseHorizontalPadding,
-            spacing: spacing,
-            shouldShowTime: shouldShowTime
+            horizontalPadding: baseHorizontalPadding
         )
     }
 }
@@ -199,8 +175,6 @@ struct ScheduleEventCard_Previews: PreviewProvider {
         VStack(alignment: .leading, spacing: 20) {
             ScheduleEventCard(
                 title: "Daily Standup",
-                timeRange: "9:00 – 9:30 AM",
-                showTimeRange: false,
                 cornerRadius: 12,
                 style: .standard
             )
@@ -208,8 +182,6 @@ struct ScheduleEventCard_Previews: PreviewProvider {
 
             ScheduleEventCard(
                 title: "Product Review",
-                timeRange: "11:00 AM – 12:15 PM",
-                showTimeRange: true,
                 cornerRadius: 12,
                 style: .destructive
             )
@@ -217,8 +189,6 @@ struct ScheduleEventCard_Previews: PreviewProvider {
 
             ScheduleEventCard(
                 title: "Investor Update",
-                timeRange: "2:00 – 3:00 PM",
-                showTimeRange: true,
                 cornerRadius: 12,
                 style: .highlight
             )
@@ -226,8 +196,6 @@ struct ScheduleEventCard_Previews: PreviewProvider {
 
             ScheduleEventCard(
                 title: "AI Strategy Session",
-                timeRange: "3:30 – 4:30 PM",
-                showTimeRange: true,
                 cornerRadius: 12,
                 style: .update
             )

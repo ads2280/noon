@@ -19,6 +19,7 @@ struct NDayScheduleView: View {
     // Event spacing
     private let horizontalEventInset: CGFloat = 5
     private let verticalEventInset: CGFloat = 2
+    private let minimumEventHeight: CGFloat = 8
     @State private var scrollViewProxy: ScrollViewProxy?
     @State private var lastScrolledFocusEventID: String?
 
@@ -185,14 +186,12 @@ struct NDayScheduleView: View {
                 
                 ForEach(dayEvents) { event in
                     if let layout = layoutInfo(for: event, day: day, focusEvent: focusEvent) {
-                        let eventHeight = (hourHeight * CGFloat(layout.durationHours)) - verticalEventInset
+                        let eventHeight = max((hourHeight * CGFloat(layout.durationHours)) - verticalEventInset, minimumEventHeight)
                         let topPosition = timelineTopInset + hourHeight * CGFloat(layout.startHour)
                         let centerY = topPosition + eventHeight / 2
 
                         ScheduleEventCard(
                             title: layout.title,
-                            timeRange: layout.timeRange,
-                            showTimeRange: layout.shouldShowTimeRange,
                             cornerRadius: cornerRadius,
                             style: layout.style
                         )
