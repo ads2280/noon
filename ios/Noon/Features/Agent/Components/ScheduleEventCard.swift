@@ -20,6 +20,25 @@ struct ScheduleEventCard: View {
     let title: String
     let cornerRadius: CGFloat
     let style: Style
+    
+    // Text rendering thresholds (based on caption font line height ~17px)
+    private static let multilineThreshold: CGFloat = 38   // >= 38px: multiline, < 38px: single line
+    private static let scaledFontThreshold: CGFloat = 12  // 18-17px: single line, scaled font
+    private static let reducedPaddingThreshold: CGFloat = 12  // 12-17px: scaled font, reduced padding
+    // < 12px: just clip whatever fits
+    
+    // Padding constants
+    // Calculate fullPadding to allow 2 lines in 1-hour event (38px height)
+    private static var fullPadding: CGFloat {
+        let font = UIFont.preferredFont(forTextStyle: .caption1)
+        let fontWithWeight = UIFont.systemFont(ofSize: font.pointSize, weight: .semibold)
+        let lineHeight = fontWithWeight.lineHeight
+        let oneHourHeight: CGFloat = 38  // 40px hourHeight - 2px verticalEventInset
+        let twoLinesHeight = lineHeight * 2
+        return max(2, (oneHourHeight - twoLinesHeight) / 2)
+    }
+    private static let reducedPadding: CGFloat = 4
+    private static let horizontalPaddingValue: CGFloat = 8
 
     private var backgroundStyle: AnyShapeStyle {
         switch style {
@@ -65,9 +84,10 @@ struct ScheduleEventCard: View {
                         .font(.caption.weight(.semibold))
                         .foregroundStyle(textColor)
                         .strikethrough(style == .destructive, color: strikeColor)
-                        .lineLimit(1)
-                        .minimumScaleFactor(0.85)
-                        .frame(maxWidth: .infinity, alignment: .leading)
+                        .lineLimit(metrics.maxLines)
+                        .minimumScaleFactor(metrics.maxLines == 1 ? metrics.fontScale : 1.0)
+                        .fixedSize(horizontal: false, vertical: metrics.maxLines != 1)
+                        .frame(maxWidth: .infinity, alignment: .topLeading)
                         .padding(.horizontal, metrics.horizontalPadding)
                         .padding(.top, metrics.topPadding)
                         .padding(.bottom, metrics.bottomPadding)
@@ -95,6 +115,9 @@ private extension ScheduleEventCard {
         let topPadding: CGFloat
         let bottomPadding: CGFloat
         let horizontalPadding: CGFloat
+        let maxLines: Int?
+        let fontScale: CGFloat
+        let shouldTruncate: Bool
     }
 
     var textColor: Color {
@@ -142,31 +165,134 @@ private extension ScheduleEventCard {
     }
 
     func contentMetrics(for availableHeight: CGFloat) -> ContentMetrics {
-        let baseHorizontalPadding: CGFloat = 12
-        let baseVerticalPadding: CGFloat = 8
-
-        let titleLineHeight = UIFont.preferredFont(forTextStyle: .caption1).lineHeight
-        let contentHeight = titleLineHeight
-
-        let remainingHeight = availableHeight - contentHeight
-
-        let topPadding: CGFloat
-        let bottomPadding: CGFloat
-
-        if remainingHeight <= (baseVerticalPadding * 2) {
-            let equalPadding = max(remainingHeight / 2, 0)
-            topPadding = equalPadding
-            bottomPadding = equalPadding
+        let font = UIFont.preferredFont(forTextStyle: .caption1)
+        let fontWithWeight = UIFont.systemFont(ofSize: font.pointSize, weight: .semibold)
+        let actualLineHeight = fontWithWeight.lineHeight
+        
+        // Determine rendering mode based on available height
+        if availableHeight >= Self.multilineThreshold {
+            // Multiline: show as many lines as fit, full padding, full font, with truncation
+            let topPadding = Self.fullPadding - 2  // Reduce by 1px to compensate for visual difference
+            let bottomPadding = Self.fullPadding + 2
+            let horizontalPadding = Self.horizontalPaddingValue
+            let availableTextHeight = availableHeight - topPadding - bottomPadding
+            let maxLines = max(1, Int(floor(availableTextHeight / actualLineHeight)))
+            let fontScale: CGFloat = 1.0
+            let shouldTruncate = true
+            
+            return ContentMetrics(
+                topPadding: topPadding,
+                bottomPadding: bottomPadding,
+                horizontalPadding: horizontalPadding,
+                maxLines: maxLines,
+                fontScale: fontScale,
+                shouldTruncate: shouldTruncate
+            )
+        } else if availableHeight < Self.multilineThreshold {
+            // Single line full: full padding, single line, full font
+            let horizontalPadding = Self.horizontalPaddingValue
+            let maxLines = 1
+            let fontScale: CGFloat = 1.0
+            let shouldTruncate = true
+            
+            // Adjust padding to center the single line
+            let contentHeight = actualLineHeight
+            let remainingHeight = availableHeight - contentHeight
+            let topPadding: CGFloat
+            let bottomPadding: CGFloat
+            if remainingHeight <= (Self.fullPadding * 2) {
+                let equalPadding = max(remainingHeight / 2, 0)
+                topPadding = equalPadding
+                bottomPadding = equalPadding
+            } else {
+                topPadding = Self.fullPadding
+                bottomPadding = remainingHeight - Self.fullPadding
+            }
+            
+            return ContentMetrics(
+                topPadding: topPadding,
+                bottomPadding: bottomPadding,
+                horizontalPadding: horizontalPadding,
+                maxLines: maxLines,
+                fontScale: fontScale,
+                shouldTruncate: shouldTruncate
+            )
+        } else if availableHeight >= Self.scaledFontThreshold {
+            // Single line scaled: full padding, single line, scaled font
+            let horizontalPadding = Self.horizontalPaddingValue
+            let maxLines = 1
+            let fontScale: CGFloat = 0.85
+            let shouldTruncate = true
+            
+            // Adjust padding to center the single line
+            let contentHeight = actualLineHeight * fontScale
+            let remainingHeight = availableHeight - contentHeight
+            let topPadding: CGFloat
+            let bottomPadding: CGFloat
+            if remainingHeight <= (Self.fullPadding * 2) {
+                let equalPadding = max(remainingHeight / 2, 0)
+                topPadding = equalPadding
+                bottomPadding = equalPadding
+            } else {
+                topPadding = Self.fullPadding
+                bottomPadding = remainingHeight - Self.fullPadding
+            }
+            
+            return ContentMetrics(
+                topPadding: topPadding,
+                bottomPadding: bottomPadding,
+                horizontalPadding: horizontalPadding,
+                maxLines: maxLines,
+                fontScale: fontScale,
+                shouldTruncate: shouldTruncate
+            )
+        } else if availableHeight >= Self.reducedPaddingThreshold {
+            // Scaled with reduced padding: reduced padding, single line, scaled font
+            let horizontalPadding = Self.horizontalPaddingValue
+            let maxLines = 1
+            let fontScale: CGFloat = 0.85
+            let shouldTruncate = true
+            
+            // Adjust padding to fit
+            let contentHeight = actualLineHeight * fontScale
+            let remainingHeight = availableHeight - contentHeight
+            let topPadding: CGFloat
+            let bottomPadding: CGFloat
+            if remainingHeight <= (Self.reducedPadding * 2) {
+                let equalPadding = max(remainingHeight / 2, 0)
+                topPadding = equalPadding
+                bottomPadding = equalPadding
+            } else {
+                topPadding = Self.reducedPadding
+                bottomPadding = remainingHeight - Self.reducedPadding
+            }
+            
+            return ContentMetrics(
+                topPadding: topPadding,
+                bottomPadding: bottomPadding,
+                horizontalPadding: horizontalPadding,
+                maxLines: maxLines,
+                fontScale: fontScale,
+                shouldTruncate: shouldTruncate
+            )
         } else {
-            topPadding = baseVerticalPadding
-            bottomPadding = remainingHeight - baseVerticalPadding
+            // Minimum: minimal padding, single line, scaled font, clip
+            let topPadding = max(availableHeight * 0.1, 0)
+            let bottomPadding = max(availableHeight * 0.1, 0)
+            let horizontalPadding = Self.horizontalPaddingValue
+            let maxLines = 1
+            let fontScale: CGFloat = 0.85
+            let shouldTruncate = true
+            
+            return ContentMetrics(
+                topPadding: topPadding,
+                bottomPadding: bottomPadding,
+                horizontalPadding: horizontalPadding,
+                maxLines: maxLines,
+                fontScale: fontScale,
+                shouldTruncate: shouldTruncate
+            )
         }
-
-        return ContentMetrics(
-            topPadding: topPadding,
-            bottomPadding: bottomPadding,
-            horizontalPadding: baseHorizontalPadding
-        )
     }
 }
 
