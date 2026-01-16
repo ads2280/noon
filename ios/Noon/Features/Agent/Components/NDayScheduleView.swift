@@ -14,6 +14,7 @@ struct NDayScheduleView: View {
     let events: [DisplayEvent]
     let focusEvent: ScheduleFocusEvent?
     let userTimezone: String?
+    let modalBottomPadding: CGFloat?
 
     private let hours = Array(0..<24)
     
@@ -31,13 +32,15 @@ struct NDayScheduleView: View {
         numberOfDays: Int = 3,
         events: [DisplayEvent],
         focusEvent: ScheduleFocusEvent? = nil,
-        userTimezone: String? = nil
+        userTimezone: String? = nil,
+        modalBottomPadding: CGFloat? = nil
     ) {
         self.startDate = calendar.startOfDay(for: startDate)
         self.numberOfDays = max(1, numberOfDays)
         self.events = events
         self.focusEvent = focusEvent
         self.userTimezone = userTimezone
+        self.modalBottomPadding = modalBottomPadding
     }
 
     var body: some View {
@@ -106,6 +109,7 @@ struct NDayScheduleView: View {
                 .padding(.bottom, scheduleBottomInset)
             }
             .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
+            .animation(.spring(response: 0.3, dampingFraction: 0.8), value: modalBottomPadding)
         }
         .padding(.top, 4)
         .padding(.bottom, 12)
@@ -300,7 +304,7 @@ struct NDayScheduleView: View {
     ) -> some View {
         let cornerRadius: CGFloat = 5
 
-        let content = ZStack(alignment: .topLeading) {
+        let scheduleContent = ZStack(alignment: .topLeading) {
             Canvas { context, _ in
                 for index in 0...hours.count {
                     let y = timelineTopInset + hourHeight * CGFloat(index)
@@ -370,7 +374,21 @@ struct NDayScheduleView: View {
                 }
             }
         }
-        .frame(width: contentWidth, height: gridHeight, alignment: .topLeading)
+        
+        let paddingHeight = modalBottomPadding ?? 0
+        let totalContentHeight = gridHeight + paddingHeight
+        
+        let content = VStack(spacing: 0) {
+            scheduleContent
+                .frame(width: contentWidth, height: gridHeight, alignment: .topLeading)
+            
+            // Dynamic padding for modal visibility
+            if paddingHeight > 0 {
+                Color.clear
+                    .frame(width: contentWidth, height: paddingHeight)
+            }
+        }
+        .frame(width: contentWidth, height: totalContentHeight, alignment: .topLeading)
         .clipped()
 
         ScrollViewReader { proxy in

@@ -27,7 +27,8 @@ struct AgentView: View {
                     numberOfDays: viewModel.numberOfDays,
                     events: viewModel.displayEvents,
                     focusEvent: viewModel.focusEvent,
-                    userTimezone: viewModel.userTimezone
+                    userTimezone: viewModel.userTimezone,
+                    modalBottomPadding: scheduleModalPadding
                 )
                 .padding(.horizontal, 4)
                 .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
@@ -35,51 +36,30 @@ struct AgentView: View {
             }
         }
         .safeAreaInset(edge: .bottom, spacing: 0) {
-            ZStack(alignment: .bottom) {
-                // Microphone button - always in fixed position at bottom
-                VStack(spacing: 0) {
-                    Color.clear
-                        .frame(height: 24)
-                    
-                    // Transcription text above microphone
-                    TranscriptionDisplay(text: viewModel.transcriptionText)
-                    
-                    // Notice display for errors and no-action responses
-                    NoticeDisplay(message: viewModel.noticeMessage)
-                    
-                    microphoneButton
-                        .padding(.horizontal, 24)
-                }
+            VStack(spacing: 0) {
+                // Reduced top spacing to bring schedule view closer to microphone button
+                Color.clear
+                    .frame(height: 8)
                 
-                // Modal appears above microphone button when there's an agent action requiring confirmation
-                // This increases the safeAreaInset height, shrinking the schedule view above
-                // Only show modal once schedule is ready AND transcription is cleared to ensure smooth transition
-                if let agentAction = viewModel.agentAction, agentAction.requiresConfirmation, viewModel.hasLoadedSchedule, viewModel.transcriptionText == nil {
-                    VStack {
-                        ConfirmationModal(
-                            actionType: actionType(for: agentAction),
-                            onConfirm: {
-                                Task {
-                                    await viewModel.confirmPendingAction(accessToken: authViewModel.session?.accessToken)
-                                }
-                            },
-                            onCancel: {
-                                viewModel.cancelPendingAction()
-                            },
-                            isLoading: $viewModel.isConfirmingAction
-                        )
-                        .padding(.bottom, 16)
+                // Microphone button - always in fixed position at bottom
+                microphoneButton
+                    .padding(.horizontal, 24)
+            }
+        }
+        .overlay(alignment: .bottom) {
+            // Unified modal appears above microphone button, overlaying the schedule view
+            // Priority: confirmation > thinking > notice
+            if let modalState = agentModalState {
+                GeometryReader { geometry in
+                    AgentModal(state: modalState)
+                        .padding(.horizontal, 24)
+                        .padding(.bottom, geometry.safeAreaInsets.bottom + 8 + 72 + 20 + 8) // safe area + spacing + button + padding + gap above schedule
                         .transition(.opacity.combined(with: .move(edge: .bottom)))
-                        
-                        Spacer()
-                            .frame(height: 24 + 72 + 20) // Height of microphone button section
-                    }
+                        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .bottom)
                 }
             }
-            .animation(.spring(response: 0.3, dampingFraction: 0.8), value: viewModel.agentAction?.requiresConfirmation == true)
-            .animation(.easeInOut(duration: 0.2), value: viewModel.transcriptionText != nil)
-            .animation(.easeInOut(duration: 0.2), value: viewModel.noticeMessage != nil)
         }
+        .animation(.spring(response: 0.3, dampingFraction: 0.8), value: agentModalState != nil)
         .onReceive(viewModel.$displayState) { state in
             handleDisplayStateChange(state)
         }
@@ -96,6 +76,38 @@ struct AgentView: View {
         }
     }
 
+    private var agentModalState: AgentModalState? {
+        // Priority: confirmation > thinking > notice
+        // Only show confirmation once schedule is ready AND transcription is cleared to ensure smooth transition
+        if let agentAction = viewModel.agentAction, 
+           agentAction.requiresConfirmation, 
+           viewModel.hasLoadedSchedule, 
+           viewModel.transcriptionText == nil {
+            return .confirmation(
+                actionType: actionType(for: agentAction),
+                onConfirm: {
+                    Task {
+                        await viewModel.confirmPendingAction(accessToken: authViewModel.session?.accessToken)
+                    }
+                },
+                onCancel: {
+                    viewModel.cancelPendingAction()
+                },
+                isLoading: viewModel.isConfirmingAction
+            )
+        } else if let transcriptionText = viewModel.transcriptionText, !transcriptionText.isEmpty {
+            return .thinking(text: transcriptionText)
+        } else if let noticeMessage = viewModel.noticeMessage, !noticeMessage.isEmpty {
+            return .notice(message: noticeMessage)
+        } else {
+            return nil
+        }
+    }
+    
+    private var scheduleModalPadding: CGFloat? {
+        agentModalState != nil ? 120 : nil // modal height (88) + gap (8) + buffer (24)
+    }
+    
     private var microphoneButton: some View {
         Button {
             // Intentionally empty; gesture handles interaction
