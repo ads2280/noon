@@ -137,10 +137,12 @@ struct AgentView: View {
         .scaleEffect(viewModel.isRecording ? 1.05 : 1.0)
         .opacity(viewModel.isRecording ? 0.85 : 1.0)
         .buttonStyle(.plain)
+        .disabled(isLoading)
         .onLongPressGesture(
             minimumDuration: 0,
             maximumDistance: 80,
             pressing: { pressing in
+                guard !isLoading else { return }
                 if pressing && isPressingMic == false {
                     isPressingMic = true
                     // Haptic feedback when mic starts listening
