@@ -32,30 +32,22 @@ struct AgentView: View {
                 )
                 .padding(.horizontal, 4)
                 .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
+                .ignoresSafeArea(edges: .bottom) // Extend schedule to bottom of screen
                 .transition(.opacity.combined(with: .move(edge: .top)))
             }
         }
         .safeAreaInset(edge: .bottom, spacing: 0) {
-            VStack(spacing: 0) {
-                // Reduced top spacing to bring schedule view closer to microphone button
-                Color.clear
-                    .frame(height: 8)
-                
-                // Microphone button - always in fixed position at bottom
-                microphoneButton
-                    .padding(.horizontal, 24)
-            }
-        }
-        .overlay(alignment: .bottom) {
-            // Unified modal appears above microphone button, overlaying the schedule view
-            // Priority: confirmation > thinking > notice
-            if let modalState = agentModalState {
-                GeometryReader { geometry in
+            VStack(spacing: 8) { // 4pt gap between modal and microphone container
+                // Unified modal appears above microphone button, overlaying the schedule view
+                // Priority: confirmation > thinking > notice
+                if let modalState = agentModalState {
                     AgentModal(state: modalState)
-                        .padding(.horizontal, 24)
-                        .padding(.bottom, geometry.safeAreaInsets.bottom + 8 + 72 + 20 + 8) // safe area + spacing + button + padding + gap above schedule
                         .transition(.opacity.combined(with: .move(edge: .bottom)))
-                        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .bottom)
+                }
+                
+                // Microphone button in liquid glass container - always in fixed position at bottom
+                MicrophoneButtonContainer {
+                    microphoneButton
                 }
             }
         }
@@ -104,8 +96,15 @@ struct AgentView: View {
         }
     }
     
-    private var scheduleModalPadding: CGFloat? {
-        agentModalState != nil ? 120 : nil // modal height (88) + gap (8) + buffer (24)
+    private var scheduleModalPadding: CGFloat {
+        // Base padding (always present) for microphone button container
+        // Container height: 72pt button + 12pt top padding + 12pt bottom padding = 96pt
+        let microphonePadding: CGFloat = 96 + 8 + 24 // container height (72+12+12) + gap + buffer
+        
+        // Additional padding when modal visible
+        let modalPadding: CGFloat = agentModalState != nil ? 88 + 8 + 24 : 0 // modal height + gap + buffer
+        
+        return microphonePadding + modalPadding
     }
     
     private var microphoneButton: some View {
@@ -161,7 +160,6 @@ struct AgentView: View {
             },
             perform: {}
         )
-        .padding(.bottom, 20)
     }
 
     private func actionType(for agentAction: AgentViewModel.AgentAction) -> ConfirmationActionType {

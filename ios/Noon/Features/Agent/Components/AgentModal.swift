@@ -23,26 +23,34 @@ struct AgentModal: View {
     
     private let fixedHeight: CGFloat = 88
     private let cornerRadius: CGFloat = 22
-    private let horizontalPadding: CGFloat = 24
+    private let horizontalPadding: CGFloat = 4 // Match schedule view horizontal padding
     private let verticalPadding: CGFloat = 20
     private let buttonSize: CGFloat = 64
     private let buttonSpacing: CGFloat = 24
     
     var body: some View {
         if let state = state {
-            ZStack {
-                // Content layer
-                content(for: state)
+            HStack(spacing: 0) {
+                Spacer()
+                    .frame(width: horizontalPadding)
+                
+                ZStack {
+                    // Content layer
+                    content(for: state)
+                }
+                .frame(height: fixedHeight)
+                .frame(maxWidth: .infinity)
+                .glassEffect(.regular.interactive(), in: .rect(cornerRadius: cornerRadius))
+                .shadow(
+                    color: Color.black.opacity(0.1),
+                    radius: 12,
+                    x: 0,
+                    y: 4
+                )
+                
+                Spacer()
+                    .frame(width: horizontalPadding)
             }
-            .frame(height: fixedHeight)
-            .padding(.horizontal, horizontalPadding)
-            .glassEffect(.regular.interactive(), in: .rect(cornerRadius: cornerRadius))
-            .shadow(
-                color: Color.black.opacity(0.1),
-                radius: 12,
-                x: 0,
-                y: 4
-            )
             .transition(.opacity.combined(with: .move(edge: .bottom)))
         }
     }

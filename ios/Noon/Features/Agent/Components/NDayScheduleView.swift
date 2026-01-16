@@ -14,7 +14,7 @@ struct NDayScheduleView: View {
     let events: [DisplayEvent]
     let focusEvent: ScheduleFocusEvent?
     let userTimezone: String?
-    let modalBottomPadding: CGFloat?
+    let modalBottomPadding: CGFloat
 
     private let hours = Array(0..<24)
     
@@ -33,7 +33,7 @@ struct NDayScheduleView: View {
         events: [DisplayEvent],
         focusEvent: ScheduleFocusEvent? = nil,
         userTimezone: String? = nil,
-        modalBottomPadding: CGFloat? = nil
+        modalBottomPadding: CGFloat = 0
     ) {
         self.startDate = calendar.startOfDay(for: startDate)
         self.numberOfDays = max(1, numberOfDays)
@@ -375,14 +375,14 @@ struct NDayScheduleView: View {
             }
         }
         
-        let paddingHeight = modalBottomPadding ?? 0
+        let paddingHeight = modalBottomPadding
         let totalContentHeight = gridHeight + paddingHeight
         
         let content = VStack(spacing: 0) {
             scheduleContent
                 .frame(width: contentWidth, height: gridHeight, alignment: .topLeading)
             
-            // Dynamic padding for modal visibility
+            // Dynamic padding for microphone button and modal visibility
             if paddingHeight > 0 {
                 Color.clear
                     .frame(width: contentWidth, height: paddingHeight)
