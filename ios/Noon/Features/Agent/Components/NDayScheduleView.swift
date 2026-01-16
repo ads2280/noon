@@ -195,15 +195,22 @@ struct NDayScheduleView: View {
         if segment.isSpanning {
             // Spanning card: calculate width based on number of days it spans
             let dayIndices = getDayIndices(for: segment, dates: dates)
-            let spanCount = dayIndices.count
-            // Width = (number of days * dayColumnWidth) - horizontalEventInset
-            // This matches the pattern: multiples of day width minus one inset
-            // Example: 2 days = 2 * dayColumnWidth - 5px
-            let spanWidth = CGFloat(spanCount) * dayColumnWidth - horizontalEventInset
-            // cardWidth is used for positioning, actual card width is spanWidth
-            cardWidth = CGFloat(spanCount) * dayColumnWidth  // Full width including space for inset
-            // For alignment, we want left edge at 0 (same as non-spanning in first column)
-            centerX = spanWidth / 2  // Center the card (actual width is spanWidth, so center at spanWidth/2)
+            if let firstDayIndex = dayIndices.first {
+                let spanCount = dayIndices.count
+                // Width = (number of days * dayColumnWidth) - horizontalEventInset
+                // This matches the pattern: multiples of day width minus one inset
+                // Example: 2 days = 2 * dayColumnWidth - 5px
+                let spanWidth = CGFloat(spanCount) * dayColumnWidth - horizontalEventInset
+                // cardWidth is used for positioning, actual card width is spanWidth
+                cardWidth = CGFloat(spanCount) * dayColumnWidth  // Full width including space for inset
+                // Position starting at the first day the event appears on
+                let columnStart = CGFloat(firstDayIndex) * dayColumnWidth
+                centerX = columnStart + spanWidth / 2  // Center the card starting from the first day
+            } else {
+                // Fallback if no indices found - shouldn't happen but handle gracefully
+                cardWidth = totalEventWidth
+                centerX = (totalEventWidth - horizontalEventInset) / 2
+            }
         } else {
             // Single-day card in appropriate column - match regular event alignment
             // Find which column this day is in
