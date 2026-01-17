@@ -32,6 +32,11 @@ final class GoogleCalendarScheduleService: GoogleCalendarScheduleServicing {
         endDateISO: String,
         accessToken: String
     ) async throws -> GoogleCalendarSchedule {
+        let totalStart = Date()
+        await TimingLogger.shared.logStart("frontend.google_calendar_service.fetch_schedule", details: "start_date=\(startDateISO) end_date=\(endDateISO)")
+        
+        // Request preparation
+        let prepStart = Date()
         var request = try makeRequest(accessToken: accessToken)
         let payload = ScheduleRequestPayload(
             startDate: startDateISO,
@@ -41,9 +46,15 @@ final class GoogleCalendarScheduleService: GoogleCalendarScheduleServicing {
         let encoder = JSONEncoder()
         encoder.outputFormatting = [.withoutEscapingSlashes]
         request.httpBody = try encoder.encode(payload)
+        let prepDuration = Date().timeIntervalSince(prepStart)
+        await TimingLogger.shared.logStep("frontend.google_calendar_service.fetch_schedule.prepare_request", duration: prepDuration)
 
         do {
+            // Network call
+            let networkStart = Date()
             let (data, response) = try await urlSession.data(for: request)
+            let networkDuration = Date().timeIntervalSince(networkStart)
+            await TimingLogger.shared.logStep("frontend.google_calendar_service.fetch_schedule.network", duration: networkDuration, details: "data_size=\(data.count) bytes")
             guard let httpResponse = response as? HTTPURLResponse else {
                 googleCalendarLogger.error("❌ Non-HTTP response when fetching schedule.")
                 throw GoogleCalendarScheduleServiceError.http(-1)
@@ -64,9 +75,17 @@ final class GoogleCalendarScheduleService: GoogleCalendarScheduleServicing {
             }
 
             do {
+                // Decoding
+                let decodeStart = Date()
                 let decoder = JSONDecoder()
                 decoder.dateDecodingStrategy = .iso8601
                 let schedule = try decoder.decode(GoogleCalendarSchedule.self, from: data)
+                let decodeDuration = Date().timeIntervalSince(decodeStart)
+                await TimingLogger.shared.logStep("frontend.google_calendar_service.fetch_schedule.decode", duration: decodeDuration, details: "event_count=\(schedule.events.count)")
+                
+                let totalDuration = Date().timeIntervalSince(totalStart)
+                await TimingLogger.shared.logStep("frontend.google_calendar_service.fetch_schedule", duration: totalDuration, details: "event_count=\(schedule.events.count)")
+                
                 googleCalendarLogger.debug("✅ Loaded schedule with \(schedule.events.count, privacy: .public) events.")
                 return schedule
             } catch {

@@ -2,6 +2,7 @@
 
 import logging
 import sys
+import time
 from pathlib import Path
 from datetime import datetime, timezone
 from zoneinfo import ZoneInfo
@@ -31,6 +32,7 @@ from pydantic import ValidationError
 from schemas.user import AuthenticatedUser
 from core.dependencies import get_current_user
 from core.config import get_settings
+from core.timing_logger import log_step, log_start
 from domains.transcription.service import TranscriptionService
 from services import agent_calendar_service
 from db.session import get_service_client
@@ -58,6 +60,8 @@ async def transcribe_audio(
     
     Returns the transcribed text as JSON.
     """
+    endpoint_start = time.time()
+    log_start("backend.api.transcribe", details=f"user_id={current_user.id} filename={file.filename}")
     try:
         # Validate file
         if not file or not file.filename:
@@ -67,9 +71,12 @@ async def transcribe_audio(
         try:
             # Reset file pointer to beginning in case it was read already
             await file.seek(0)
+            transcribe_start = time.time()
             transcribed_text = await transcription_service.transcribe(
                 file=file.file, filename=file.filename, mime_type=file.content_type
             )
+            transcribe_duration = time.time() - transcribe_start
+            log_step("backend.api.transcribe.transcription_service", transcribe_duration)
         except ValueError as e:
             raise HTTPException(
                 status_code=400, detail=f"Transcription error: {str(e)}"
@@ -91,6 +98,8 @@ async def transcribe_audio(
                 detail="Transcription resulted in empty text. Please ensure the audio file contains speech.",
             )
 
+        endpoint_duration = time.time() - endpoint_start
+        log_step("backend.api.transcribe", endpoint_duration, details=f"text_length={len(transcribed_text)}")
         return {"text": transcribed_text}
 
     except HTTPException:
@@ -120,6 +129,9 @@ async def agent_action(
     The text query is passed to the agent which will classify intent and extract
     metadata for calendar operations.
     """
+    endpoint_start = time.time()
+    query_text = body.query
+    log_start("backend.api.action", details=f"user_id={current_user.id} query_length={len(query_text)}")
     try:
         # Extract Supabase access token from Authorization header
         auth_header = request.headers.get("Authorization")
@@ -137,7 +149,6 @@ async def agent_action(
         }
 
         # Validate query text
-        query_text = body.query
         if not query_text or not query_text.strip():
             raise HTTPException(
                 status_code=400,
@@ -167,6 +178,7 @@ async def agent_action(
         )
 
         # Get user timezone from users table
+        timezone_start = time.time()
         supabase_client = get_service_client()
         user_timezone = None
         try:
@@ -182,6 +194,9 @@ async def agent_action(
                 user_timezone = user_result.data.get("timezone")
             else:
                 logger.error(f"No user data returned user_id={current_user.id}")
+            
+            timezone_duration = time.time() - timezone_start
+            log_step("backend.api.action.get_timezone", timezone_duration)
                 
         except Exception as e:
             logger.error(
@@ -243,11 +258,14 @@ async def agent_action(
         )
 
         # Invoke and wait for completion
+        langgraph_start = time.time()
         result = await client.runs.wait(
             thread_id=None,
             assistant_id="agent",
             input=input_state,
         )
+        langgraph_duration = time.time() - langgraph_start
+        log_step("backend.api.action.langgraph_invoke", langgraph_duration, details=f"response_type={result.get('type')}")
 
         logger.info(
             f"Agent completed user_id={current_user.id} "
@@ -255,10 +273,15 @@ async def agent_action(
         )
 
         # Validate and parse agent response using Pydantic models
+        parse_start = time.time()
         try:
             if "message" in result:
                 # Error response
                 error_response = ErrorResponse.model_validate(result)
+                parse_duration = time.time() - parse_start
+                log_step("backend.api.action.parse_response", parse_duration, details="result=error")
+                endpoint_duration = time.time() - endpoint_start
+                log_step("backend.api.action", endpoint_duration)
                 return error_response.model_dump()
             elif "type" in result:
                 # Success response - parse based on type
@@ -282,7 +305,15 @@ async def agent_action(
                     error_response = ErrorResponse(
                         message=f"Unknown response type from agent: {response_type}"
                     )
+                    parse_duration = time.time() - parse_start
+                    log_step("backend.api.action.parse_response", parse_duration, details=f"result=unknown_type type={response_type}")
+                    endpoint_duration = time.time() - endpoint_start
+                    log_step("backend.api.action", endpoint_duration)
                     return error_response.model_dump()
+                parse_duration = time.time() - parse_start
+                log_step("backend.api.action.parse_response", parse_duration, details=f"result=success type={response_type}")
+                endpoint_duration = time.time() - endpoint_start
+                log_step("backend.api.action", endpoint_duration)
                 return response.model_dump()
             else:
                 # Fallback for unexpected responses - treat as error
@@ -296,6 +327,10 @@ async def agent_action(
                 error_response = ErrorResponse(
                     message="Agent failed to handle request precisely. Please try rephrasing your request."
                 )
+                parse_duration = time.time() - parse_start
+                log_step("backend.api.action.parse_response", parse_duration, details="result=unexpected_format")
+                endpoint_duration = time.time() - endpoint_start
+                log_step("backend.api.action", endpoint_duration)
                 return error_response.model_dump()
         except ValidationError as e:
             # This is an agent mistake (invalid response format), not a user error
@@ -308,9 +343,13 @@ async def agent_action(
             error_response = ErrorResponse(
                 message="Agent failed to handle request precisely. Please try rephrasing your request."
             )
+            endpoint_duration = time.time() - endpoint_start
+            log_step("backend.api.action", endpoint_duration, details="result=validation_error")
             return error_response.model_dump()
 
     except HTTPException:
+        endpoint_duration = time.time() - endpoint_start
+        log_step("backend.api.action", endpoint_duration, details="result=http_exception")
         raise
     except Exception as e:
         # Log full error details for debugging (verbose internal logging)
@@ -319,6 +358,8 @@ async def agent_action(
             exc_info=True,
         )
         # Return brief, user-friendly message (not technical details)
+        endpoint_duration = time.time() - endpoint_start
+        log_step("backend.api.action", endpoint_duration, details=f"error={str(e)[:80]}")
         raise HTTPException(
             status_code=500,
             detail="An error occurred while processing your request. Please try again."

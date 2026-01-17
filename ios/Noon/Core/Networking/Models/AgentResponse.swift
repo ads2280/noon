@@ -112,6 +112,18 @@ enum AgentResponse: Codable, Sendable {
         case success
         case type
     }
+    
+    var typeString: String {
+        switch self {
+        case .showEvent: return "show-event"
+        case .showSchedule: return "show-schedule"
+        case .createEvent: return "create-event"
+        case .updateEvent: return "update-event"
+        case .deleteEvent: return "delete-event"
+        case .noAction: return "no-action"
+        case .error: return "error"
+        }
+    }
 }
 
 struct ShowEventResponse: AgentSuccessResponse, Codable {

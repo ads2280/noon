@@ -14,3 +14,8 @@ xcuserdata/
 *.xcuserstate
 
 .DS_Store
+
+# Timing logs (performance debugging)
+agent_timing.log
+backend_timing.log
+ios_agent_timing.log

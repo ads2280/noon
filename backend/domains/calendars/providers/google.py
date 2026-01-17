@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import asyncio
 import secrets
+import time
 from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
 from typing import Any, Dict, List, Optional
@@ -17,6 +18,7 @@ from googleapiclient.discovery import build
 from googleapiclient.errors import HttpError
 
 from core.config import get_settings
+from core.timing_logger import log_step, log_start
 from domains.calendars.providers.base import CalendarProvider
 from utils.errors import (
     GoogleCalendarAPIError,
@@ -168,23 +170,39 @@ class GoogleCalendarHttpClient:
         access_token: str,
         params: Optional[Dict[str, Any]] = None,
     ) -> Dict[str, Any]:
+        request_start = time.time()
+        log_start("backend.google_calendar_api.request", details=f"method={method} path={path}")
+        
         headers = {
             "Authorization": f"Bearer {access_token}",
             "Accept": "application/json",
         }
+        network_start = time.time()
         response = await self.client.request(
             method,
             path,
             headers=headers,
             params=params,
         )
+        network_duration = time.time() - network_start
+        response_size = len(response.content) if hasattr(response, 'content') else 0
+        log_step("backend.google_calendar_api.request.network", network_duration, details=f"status={response.status_code} size={response_size}")
+        
         if response.status_code >= 400:
             raise GoogleCalendarAPIError(
                 f"Google Calendar API request failed with status {response.status_code}",
                 status_code=response.status_code,
                 payload=_safe_json(response),
             )
-        return response.json()
+        
+        parse_start = time.time()
+        result = response.json()
+        parse_duration = time.time() - parse_start
+        log_step("backend.google_calendar_api.request.parse", parse_duration)
+        
+        request_duration = time.time() - request_start
+        log_step(f"backend.google_calendar_api.request", request_duration, details=f"status={response.status_code}")
+        return result
 
     async def get_event(
         self,
@@ -207,6 +225,9 @@ class GoogleCalendarHttpClient:
         max_results: int = 250,
     ) -> List[Dict[str, Any]]:
         """List events from a calendar."""
+        method_start = time.time()
+        log_start("backend.google_calendar_http_client.list_events", details=f"calendar_id={calendar_id}")
+        
         path = f"/calendars/{_encode_path_segment(calendar_id)}/events"
         params: Dict[str, Any] = {
             "timeMin": time_min,
@@ -217,21 +238,29 @@ class GoogleCalendarHttpClient:
         }
         events: List[Dict[str, Any]] = []
         page_token: Optional[str] = None
+        page_num = 0
         while True:
             if page_token:
                 params["pageToken"] = page_token
+            page_start = time.time()
             data = await self._request(
                 "GET",
                 path,
                 access_token=access_token,
                 params=params,
             )
+            page_duration = time.time() - page_start
             items = data.get("items") or []
             if isinstance(items, list):
                 events.extend(items)
+            log_step(f"backend.google_calendar_http_client.list_events.page_{page_num}", page_duration, details=f"items={len(items)} total={len(events)}")
+            page_num += 1
             page_token = data.get("nextPageToken")
             if not page_token:
                 break
+        
+        method_duration = time.time() - method_start
+        log_step("backend.google_calendar_http_client.list_events", method_duration, details=f"calendar_id={calendar_id} total_events={len(events)} pages={page_num}")
         return events
 
     async def list_calendars(
@@ -314,13 +343,28 @@ class GoogleCalendarProvider(CalendarProvider):
         max_results: int = 250,
     ) -> Dict[str, Any]:
         """List events from a calendar."""
+        method_start = time.time()
+        log_start("backend.google_calendar_provider.list_events", details=f"calendar_id={calendar_id}")
+        
+        wrapper_start = time.time()
         wrapper = self._get_wrapper()
+        wrapper_duration = time.time() - wrapper_start
+        log_step("backend.google_calendar_provider.list_events.get_wrapper", wrapper_duration)
+        
+        list_start = time.time()
         result = await wrapper.list_events(
             calendar_id=calendar_id,
             time_min=time_min,
             time_max=time_max,
             max_results=max_results,
         )
+        list_duration = time.time() - list_start
+        items_count = len(result) if isinstance(result, list) else len(result.get("items", [])) if isinstance(result, dict) else 0
+        log_step("backend.google_calendar_provider.list_events.wrapper_call", list_duration, details=f"items={items_count}")
+        
+        method_duration = time.time() - method_start
+        log_step("backend.google_calendar_provider.list_events", method_duration, details=f"calendar_id={calendar_id} items={items_count}")
+        
         return {"items": result} if isinstance(result, list) else result
 
     async def get_event(
@@ -411,9 +455,16 @@ class GoogleCalendarWrapper:
 
     async def _execute_request(self, request):
         """Execute a Google API request asynchronously."""
+        execute_start = time.time()
+        log_start("backend.google_calendar_wrapper._execute_request")
         try:
-            return await asyncio.to_thread(request.execute)
+            result = await asyncio.to_thread(request.execute)
+            execute_duration = time.time() - execute_start
+            log_step("backend.google_calendar_wrapper._execute_request", execute_duration)
+            return result
         except HttpError as error:
+            execute_duration = time.time() - execute_start
+            log_step("backend.google_calendar_wrapper._execute_request", execute_duration, details=f"ERROR: status={getattr(error, 'resp', {}).get('status', 'unknown')}")
             raise GoogleCalendarAPIError.from_http_error(error) from error
 
     async def get_event(
@@ -437,9 +488,18 @@ class GoogleCalendarWrapper:
         page_token: Optional[str] = None,
     ) -> List[Dict[str, Any]]:
         """List events from a calendar."""
+        method_start = time.time()
+        log_start("backend.google_calendar_wrapper.list_events", details=f"calendar_id={calendar_id}")
+        
+        service_start = time.time()
         service = self._get_service()
+        service_duration = time.time() - service_start
+        log_step("backend.google_calendar_wrapper.list_events.get_service", service_duration)
+        
         events: List[Dict[str, Any]] = []
+        page_num = 0
         while True:
+            request_start = time.time()
             request = service.events().list(
                 calendarId=calendar_id,
                 timeMin=time_min,
@@ -449,13 +509,23 @@ class GoogleCalendarWrapper:
                 orderBy="startTime",
                 pageToken=page_token,
             )
+            request_duration = time.time() - request_start
+            log_step(f"backend.google_calendar_wrapper.list_events.build_request.page_{page_num}", request_duration)
+            
+            execute_start = time.time()
             result = await self._execute_request(request)
+            execute_duration = time.time() - execute_start
             items = result.get("items", [])
             if isinstance(items, list):
                 events.extend(items)
+            log_step(f"backend.google_calendar_wrapper.list_events.execute.page_{page_num}", execute_duration, details=f"items={len(items)} total_events={len(events)}")
+            page_num += 1
             page_token = result.get("nextPageToken")
             if not page_token:
                 break
+        
+        method_duration = time.time() - method_start
+        log_step("backend.google_calendar_wrapper.list_events", method_duration, details=f"calendar_id={calendar_id} total_events={len(events)} pages={page_num}")
         return events
 
     async def search_events(

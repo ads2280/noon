@@ -60,6 +60,9 @@ class Settings(BaseSettings):
     # Deepgram transcription configuration
     deepgram_api_key: str | None = None
 
+    # Performance debugging
+    enable_timing_logger: bool = False  # Enable detailed timing logs (default: off for production)
+
     model_config = SettingsConfigDict(
         env_file=str(PROJECT_ROOT / ".env"),  # Load from project root .env file
         env_file_encoding="utf-8",

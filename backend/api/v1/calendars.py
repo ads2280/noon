@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import logging
+import time
 from datetime import datetime, timezone
 from typing import Any, Dict
 
@@ -10,6 +11,7 @@ from fastapi import APIRouter, Depends, HTTPException, Response, status
 from fastapi.responses import RedirectResponse
 
 from core.dependencies import AuthenticatedUser, get_current_user
+from core.timing_logger import log_step, log_start
 from domains.calendars.schemas import (
     GoogleAccountResponse,
     GoogleAccountCreate,
@@ -75,6 +77,50 @@ async def list_accounts(
         ) from exc
 
     return accounts
+
+
+@router.post("/accounts/refresh")
+async def refresh_calendars(
+    current_user: AuthenticatedUser = Depends(get_current_user),
+) -> Dict[str, Any]:
+    """Refresh calendars from Google API and sync to Supabase.
+    
+    This endpoint is called by the calendar accounts page to ensure
+    calendar metadata is up-to-date. Not needed for agent operations.
+    """
+    endpoint_start = time.time()
+    log_start("backend.api.calendars.refresh_calendars", details=f"user_id={current_user.id}")
+    
+    service = CalendarService()
+    try:
+        service_start = time.time()
+        await service.hydrate_calendars(current_user.id)
+        service_duration = time.time() - service_start
+        log_step("backend.api.calendars.refresh_calendars.service", service_duration)
+        
+        endpoint_duration = time.time() - endpoint_start
+        log_step("backend.api.calendars.refresh_calendars", endpoint_duration)
+        
+        return {"status": "success", "message": "Calendars refreshed successfully"}
+    except GoogleCalendarUserError as exc:
+        raise HTTPException(status_code=exc.status_code, detail=str(exc)) from exc
+    except GoogleCalendarAuthError as exc:
+        raise HTTPException(status_code=exc.status_code, detail=str(exc)) from exc
+    except GoogleCalendarServiceError as exc:
+        logger.exception(
+            "GOOGLE_CALENDAR_SERVICE_ERROR user=%s",
+            current_user.id,
+        )
+        raise HTTPException(status_code=exc.status_code, detail=str(exc)) from exc
+    except Exception as exc:
+        logger.exception(
+            "UNEXPECTED_ERROR refreshing calendars user=%s",
+            current_user.id,
+        )
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Unexpected error: {str(exc)}",
+        ) from exc
 
 
 @router.post("/accounts/oauth/start", response_model=GoogleOAuthStartResponse)
@@ -223,15 +269,29 @@ async def get_schedule(
     current_user: AuthenticatedUser = Depends(get_current_user),
 ) -> ScheduleResponse:
     """Get schedule for a date range."""
+    endpoint_start = time.time()
+    log_start("backend.api.calendars.schedule", details=f"user_id={current_user.id} start={payload.start_date} end={payload.end_date}")
+    
     service = CalendarService()
     try:
+        service_start = time.time()
         result = await service.events_for_date_range(
             user_id=current_user.id,
             start_date=payload.start_date,
             end_date=payload.end_date,
             timezone_name=payload.timezone,
         )
-        return ScheduleResponse(**result)
+        service_duration = time.time() - service_start
+        log_step("backend.api.calendars.schedule.service", service_duration, details=f"event_count={len(result.get('events', []))}")
+        
+        response_start = time.time()
+        response = ScheduleResponse(**result)
+        response_duration = time.time() - response_start
+        log_step("backend.api.calendars.schedule.build_response", response_duration)
+        
+        endpoint_duration = time.time() - endpoint_start
+        log_step("backend.api.calendars.schedule", endpoint_duration, details=f"event_count={len(result.get('events', []))}")
+        return response
     except GoogleCalendarUserError as exc:
         raise HTTPException(status_code=exc.status_code, detail=str(exc)) from exc
     except GoogleCalendarAuthError as exc:

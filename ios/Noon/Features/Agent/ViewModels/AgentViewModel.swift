@@ -10,6 +10,7 @@ import Foundation
 
 @MainActor
 final class AgentViewModel: ObservableObject {
+    private let timingLogger = TimingLogger.shared
     enum DisplayState {
         case idle
         case recording
@@ -162,13 +163,18 @@ final class AgentViewModel: ObservableObject {
         guard isRecording else { return }
 
         isRecording = false
+        let flowStart = Date()
 
         Task { @MainActor in
             do {
+                // Stop recording
+                let stopStart = Date()
                 guard let recording = try await recorder.stopRecording() else {
                     displayState = .idle
                     return
                 }
+                let stopDuration = Date().timeIntervalSince(stopStart)
+                await timingLogger.logStep("frontend.stop_recording", duration: stopDuration)
                 defer { try? FileManager.default.removeItem(at: recording.fileURL) }
 
                 let startingToken = try await resolveAccessToken(initial: accessToken)
@@ -176,10 +182,14 @@ final class AgentViewModel: ObservableObject {
                 displayState = .uploading
                 
                 // Step 1: Transcribe audio
+                let transcribeStart = Date()
                 let transcriptionResult = try await transcribeAudio(
                     recording: recording,
                     accessToken: startingToken
                 )
+                let transcribeDuration = Date().timeIntervalSince(transcribeStart)
+                await timingLogger.logStep("frontend.transcribe_audio", duration: transcribeDuration, details: "text_length=\(transcriptionResult.text.count) chars")
+                
                 let transcribedText = transcriptionResult.text
                 transcriptionText = transcribedText // Store transcription for display
                 print("Transcribed: \"\(transcribedText)\"")
@@ -190,17 +200,28 @@ final class AgentViewModel: ObservableObject {
                 noticeMessage = nil
                 
                 // Step 2: Send to agent
+                let agentStart = Date()
                 let (result, tokenUsed) = try await sendToAgent(
                     query: transcribedText,
                     accessToken: startingToken
                 )
+                let agentDuration = Date().timeIntervalSince(agentStart)
+                await timingLogger.logStep("frontend.send_to_agent", duration: agentDuration, details: "response_type=\(result.agentResponse.typeString)")
 
+                // Step 3: Handle response and display UI
+                let handleStart = Date()
                 try await handle(agentResponse: result.agentResponse, accessToken: tokenUsed)
+                let handleDuration = Date().timeIntervalSince(handleStart)
+                await timingLogger.logStep("frontend.handle_response", duration: handleDuration)
 
                 // Clear transcription text when agent response arrives
                 transcriptionText = nil
 
                 displayState = .completed(result: result)
+                
+                // Log total flow duration
+                let totalDuration = Date().timeIntervalSince(flowStart)
+                await timingLogger.logStep("frontend.total_flow", duration: totalDuration)
                 
                 // Set notice message for no-action responses (after clearing transcription)
                 switch result.agentResponse {
@@ -320,23 +341,30 @@ final class AgentViewModel: ObservableObject {
             isLoadingSchedule = false
         }
 
+        let loadStart = Date()
         let dateRange = self.dateRange(for: date)
         
         let startDateISO = Self.iso8601DateFormatter.string(from: dateRange.start)
         let endDateISO = Self.iso8601DateFormatter.string(from: dateRange.end)
         
         let token = try await resolveAccessToken(initial: initialToken)
+        let fetchStart = Date()
         let events = try await fetchScheduleEvents(
             startDateISO: startDateISO,
             endDateISO: endDateISO,
             accessToken: token
         )
+            let fetchDuration = Date().timeIntervalSince(fetchStart)
+            await timingLogger.logStep("frontend.load_schedule.fetch_events", duration: fetchDuration, details: "event_count=\(events.count)")
 
         print("Loaded schedule: \(events.count) events")
         scheduleDate = dateRange.start
         displayEvents = events
         self.focusEvent = focusEvent
         hasLoadedSchedule = true
+        
+        let loadDuration = Date().timeIntervalSince(loadStart)
+        await timingLogger.logStep("frontend.load_schedule", duration: loadDuration)
     }
 
     private func localizedMessage(for error: Error) -> String {
@@ -404,8 +432,13 @@ final class AgentViewModel: ObservableObject {
             message = "Authentication failed"
         } else if error is CalendarServiceError || error is GoogleCalendarScheduleServiceError {
             message = "Calendar operation failed"
-        } else if error is URLError {
-            message = "Network connection failed"
+        } else if let urlError = error as? URLError {
+            // Check for specific timeout error
+            if urlError.code == .timedOut {
+                message = "Request timed out."
+            } else {
+                message = "Network connection failed"
+            }
         } else {
             // For other errors, try to use localizedDescription if available
             let errorDescription = error.localizedDescription
@@ -512,17 +545,33 @@ final class AgentViewModel: ObservableObject {
     }
 
     private func handle(agentResponse: AgentResponse, accessToken: String) async throws {
+        _ = Date()
         switch agentResponse {
         case .showEvent(let response):
+            let actionStart = Date()
             try await handleShowEvent(response: response, accessToken: accessToken)
+            let actionDuration = Date().timeIntervalSince(actionStart)
+            await timingLogger.logStep("frontend.handle_response.show_event", duration: actionDuration)
         case .showSchedule:
+            let actionStart = Date()
             try await handleShowSchedule(agentResponse: agentResponse, accessToken: accessToken)
+            let actionDuration = Date().timeIntervalSince(actionStart)
+            await timingLogger.logStep("frontend.handle_response.show_schedule", duration: actionDuration)
         case .deleteEvent(let response):
+            let actionStart = Date()
             try await handleDeleteEvent(response: response, accessToken: accessToken)
+            let actionDuration = Date().timeIntervalSince(actionStart)
+            await timingLogger.logStep("frontend.handle_response.delete_event", duration: actionDuration)
         case .updateEvent(let response):
+            let actionStart = Date()
             try await handleUpdateEvent(response: response, accessToken: accessToken)
+            let actionDuration = Date().timeIntervalSince(actionStart)
+            await timingLogger.logStep("frontend.handle_response.update_event", duration: actionDuration)
         case .createEvent(let response):
+            let actionStart = Date()
             try await handleCreateEvent(response: response, accessToken: accessToken)
+            let actionDuration = Date().timeIntervalSince(actionStart)
+            await timingLogger.logStep("frontend.handle_response.create_event", duration: actionDuration)
         case .noAction(let response):
             setNoticeMessage(response.metadata.reason)
         case .error(let error):
@@ -554,20 +603,28 @@ final class AgentViewModel: ObservableObject {
     ) async throws -> TranscriptionResult {
         let request = TranscriptionRequest(fileURL: recording.fileURL)
         
+        let networkStart = Date()
         do {
-            return try await transcriptionService.transcribe(
+            let result = try await transcriptionService.transcribe(
                 request: request,
                 accessToken: accessToken
             )
+            let networkDuration = Date().timeIntervalSince(networkStart)
+            await timingLogger.logStep("frontend.transcribe_audio.network", duration: networkDuration)
+            return result
         } catch let error as ServerError where error.statusCode == 401 {
             // Token expired - refresh and retry once
             guard let refreshedToken = await AuthTokenProvider.shared.currentAccessToken() else {
                 throw AccessTokenError.missingAuthProvider
             }
-            return try await transcriptionService.transcribe(
+            let retryStart = Date()
+            let result = try await transcriptionService.transcribe(
                 request: request,
                 accessToken: refreshedToken
             )
+            let retryDuration = Date().timeIntervalSince(retryStart)
+            await timingLogger.logStep("frontend.transcribe_audio.network_retry", duration: retryDuration)
+            return result
         }
     }
     
@@ -577,21 +634,41 @@ final class AgentViewModel: ObservableObject {
     ) async throws -> (AgentActionResult, String) {
         let request = AgentActionRequest(query: query)
         
+        // Log total time from frontend perspective (includes all overhead)
+        let totalStart = Date()
+        await timingLogger.logStart("frontend.send_to_agent.total", details: "query_length=\(query.count) chars")
+        
+        let networkStart = Date()
         do {
             let result = try await service.performAgentAction(
                 request: request,
                 accessToken: accessToken
             )
+            let networkDuration = Date().timeIntervalSince(networkStart)
+            await timingLogger.logStep("frontend.send_to_agent.network", duration: networkDuration, details: "status_code=\(result.statusCode)")
+            
+            // Log total time (from frontend's perspective - includes network + any processing)
+            let totalDuration = Date().timeIntervalSince(totalStart)
+            await timingLogger.logStep("frontend.send_to_agent.total", duration: totalDuration, details: "response_type=\(result.agentResponse.typeString)")
+            
             return (result, accessToken)
         } catch let error as ServerError where error.statusCode == 401 {
             // Token expired - refresh and retry once
             guard let refreshedToken = await AuthTokenProvider.shared.currentAccessToken() else {
                 throw AccessTokenError.missingAuthProvider
             }
+            let retryStart = Date()
             let result = try await service.performAgentAction(
                 request: request,
                 accessToken: refreshedToken
             )
+            let retryDuration = Date().timeIntervalSince(retryStart)
+            await timingLogger.logStep("frontend.send_to_agent.network_retry", duration: retryDuration, details: "status_code=\(result.statusCode)")
+            
+            // Log total time for retry
+            let totalDuration = Date().timeIntervalSince(totalStart)
+            await timingLogger.logStep("frontend.send_to_agent.total", duration: totalDuration, details: "response_type=\(result.agentResponse.typeString) retry=true")
+            
             return (result, refreshedToken)
         }
     }
@@ -602,23 +679,29 @@ final class AgentViewModel: ObservableObject {
         accessToken: String
     ) async throws -> [DisplayEvent] {
         // Try the request first
+        let networkStart = Date()
         do {
             let schedule = try await scheduleService.fetchSchedule(
                 startDateISO: startDateISO,
                 endDateISO: endDateISO,
                 accessToken: accessToken
             )
+            let networkDuration = Date().timeIntervalSince(networkStart)
+            await timingLogger.logStep("frontend.fetch_schedule_events.network", duration: networkDuration, details: "event_count=\(schedule.events.count)")
             return schedule.events.map { DisplayEvent(event: $0) }
         } catch GoogleCalendarScheduleServiceError.unauthorized {
             // Token expired - refresh and retry once
             guard let refreshedToken = await AuthTokenProvider.shared.currentAccessToken() else {
                 throw AccessTokenError.missingAuthProvider
             }
+            let retryStart = Date()
             let schedule = try await scheduleService.fetchSchedule(
                 startDateISO: startDateISO,
                 endDateISO: endDateISO,
                 accessToken: refreshedToken
             )
+            let retryDuration = Date().timeIntervalSince(retryStart)
+            await timingLogger.logStep("frontend.fetch_schedule_events.network_retry", duration: retryDuration, details: "event_count=\(schedule.events.count)")
             return schedule.events.map { DisplayEvent(event: $0) }
         }
     }
@@ -655,11 +738,14 @@ final class AgentViewModel: ObservableObject {
         let focus = ScheduleFocusEvent(eventID: eventID, style: .highlight)
         
         // Fetch the event to get its start date
+        let fetchStart = Date()
         let event = try await fetchEventWithRefresh(
             accessToken: accessToken,
             calendarId: calendarID,
             eventId: eventID
         )
+        let fetchDuration = Date().timeIntervalSince(fetchStart)
+        await timingLogger.logStep("frontend.handle_show_event.fetch_event", duration: fetchDuration)
         
         guard let eventStartDate = event.start?.dateTime else {
             print("ERROR: Event \(eventID) has no start date")

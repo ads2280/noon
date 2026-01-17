@@ -298,6 +298,10 @@ private final class MockCalendarService: CalendarServicing {
         accounts
     }
 
+    func refreshCalendars(accessToken: String) async throws {
+        // Mock implementation - no-op for testing
+    }
+
     func beginGoogleOAuth(accessToken: String) async throws -> GoogleOAuthStart {
         GoogleOAuthStart(
             authorizationURL: URL(string: "https://accounts.google.com/o/oauth2/v2/auth?mock=true")!,

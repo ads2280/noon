@@ -12,6 +12,7 @@ private let calendarLogger = Logger(subsystem: "com.noon.app", category: "Calend
 
 protocol CalendarServicing {
     func fetchCalendars(accessToken: String) async throws -> [GoogleAccount]
+    func refreshCalendars(accessToken: String) async throws
     func beginGoogleOAuth(accessToken: String) async throws -> GoogleOAuthStart
     func deleteCalendar(accessToken: String, accountId: String) async throws
     func createEvent(accessToken: String, request: CreateEventRequest) async throws -> CalendarCreateEventResponse
@@ -67,6 +68,34 @@ final class CalendarService: CalendarServicing {
                 throw calendarError
             }
             calendarLogger.error("❌ Network error when fetching calendars: \(String(describing: error))")
+            throw CalendarServiceError.network(error)
+        }
+    }
+
+    func refreshCalendars(accessToken: String) async throws {
+        let request = try makeRequest(path: "/api/v1/calendars/accounts/refresh", accessToken: accessToken, method: "POST")
+        do {
+            let (_, response) = try await urlSession.data(for: request)
+            guard let httpResponse = response as? HTTPURLResponse else {
+                calendarLogger.error("❌ Non-HTTP response when refreshing calendars")
+                throw CalendarServiceError.http(-1)
+            }
+
+            guard 200..<300 ~= httpResponse.statusCode else {
+                if httpResponse.statusCode == 401 {
+                    calendarLogger.error("🚫 Unauthorized when refreshing calendars")
+                    throw CalendarServiceError.unauthorized
+                }
+                calendarLogger.error("❌ HTTP \(httpResponse.statusCode) when refreshing calendars")
+                throw CalendarServiceError.http(httpResponse.statusCode)
+            }
+
+            calendarLogger.debug("✅ Refreshed calendars from Google API")
+        } catch {
+            if let calendarError = error as? CalendarServiceError {
+                throw calendarError
+            }
+            calendarLogger.error("❌ Network error when refreshing calendars: \(String(describing: error))")
             throw CalendarServiceError.network(error)
         }
     }

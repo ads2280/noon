@@ -55,6 +55,13 @@ final class CalendarAccountsViewModel: ObservableObject {
         }
 
         do {
+            // Refresh calendars from Google API on first load or when forced
+            // This ensures calendar metadata is up-to-date in Supabase
+            if !hasLoaded || force {
+                try await calendarService.refreshCalendars(accessToken: accessToken)
+            }
+            
+            // Fetch calendars from Supabase (now up-to-date after refresh)
             let fetched = try await calendarService.fetchCalendars(accessToken: accessToken)
             accounts = fetched
             errorMessage = nil

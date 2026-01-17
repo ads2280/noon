@@ -10,6 +10,7 @@ import logging
 import httpx
 
 from core.config import get_settings
+from core.timing_logger import log_step
 
 logger = logging.getLogger(__name__)
 
@@ -186,6 +187,8 @@ class TranscriptionService:
             "Content-Type": content_type,
         }
 
+        import time
+        deepgram_start_time = time.time()
         async with httpx.AsyncClient(timeout=60.0) as client:
             resp = await client.post(
                 "https://api.deepgram.com/v1/listen",
@@ -195,6 +198,11 @@ class TranscriptionService:
             )
             resp.raise_for_status()
             payload = resp.json()
+        deepgram_duration = time.time() - deepgram_start_time
+        log_step("backend.transcription_service.deepgram_api", deepgram_duration, details=f"audio_size={len(audio_bytes)} bytes")
 
+        extract_start_time = time.time()
         text = self._extract_transcript_from_deepgram(payload)
+        extract_duration = time.time() - extract_start_time
+        log_step("backend.transcription_service.extract_transcript", extract_duration)
         return text

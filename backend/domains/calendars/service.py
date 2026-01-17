@@ -2,13 +2,16 @@
 
 from __future__ import annotations
 
+import asyncio
 import logging
+import time as time_module
 from dataclasses import dataclass, field
 from datetime import date, datetime, time, timedelta, timezone
 from typing import Any, Dict, List, Tuple
 from zoneinfo import ZoneInfo
 
 from domains.calendars.providers.base import CalendarProvider
+from core.timing_logger import log_step, log_start
 from domains.calendars.providers.google import (
     GoogleCalendarProvider,
     GoogleCalendarHttpClient,
@@ -71,16 +74,29 @@ class CalendarService:
         timezone_name: str,
     ) -> Dict[str, Any]:
         """Get events for a date range."""
+        method_start = time_module.time()
+        log_start("backend.calendar_service.events_for_date_range", details=f"user_id={user_id} start={start_date} end={end_date}")
+        
+        prepare_start = time_module.time()
         contexts, calendars_by_id = await self._prepare_context(user_id)
+        prepare_duration = time_module.time() - prepare_start
+        log_step("backend.calendar_service.events_for_date_range.prepare_context", prepare_duration, details=f"contexts={len(contexts)} calendars={len(calendars_by_id)}")
+        
         window = _window_from_dates(start_date, end_date, timezone_name)
 
+        events_start = time_module.time()
         events = await self._events_for_window(
             contexts,
             calendars_by_id,
             timezone_name,
             window,
         )
+        events_duration = time_module.time() - events_start
+        log_step("backend.calendar_service.events_for_date_range.events_for_window", events_duration, details=f"event_count={len(events)}")
 
+        method_duration = time_module.time() - method_start
+        log_step("backend.calendar_service.events_for_date_range", method_duration, details=f"event_count={len(events)}")
+        
         return {
             "window": _window_to_response(window),
             "events": events,
@@ -94,19 +110,59 @@ class CalendarService:
         event_id: str,
     ) -> Dict[str, Any]:
         """Get a single event."""
-        contexts, _ = await self._prepare_context(user_id)
+        contexts, calendars_by_id = await self._prepare_context(user_id)
 
-        event_payload, event_context = await self._locate_event(
-            contexts,
-            calendar_id=calendar_id,
-            event_id=event_id,
-        )
-        if event_payload is None or event_context is None:
+        # Find the account context that has access to this calendar using Supabase data
+        supabase_calendar = calendars_by_id.get(calendar_id)
+        if not supabase_calendar:
             raise GoogleCalendarEventNotFoundError(
-                "Event not found in any linked Google calendar."
+                f"Calendar {calendar_id} not found in any linked Google account."
+            )
+        
+        account_id = supabase_calendar["google_account_id"]
+        event_context = next((ctx for ctx in contexts if ctx.id == account_id), None)
+        if not event_context:
+            raise GoogleCalendarEventNotFoundError(
+                f"Account for calendar {calendar_id} not found."
             )
 
-        return event_payload
+        # Get the event via provider
+        try:
+            event_payload = await event_context.provider.get_event(
+                calendar_id=calendar_id,
+                event_id=event_id,
+            )
+        except GoogleCalendarAPIError as exc:
+            if exc.status_code == 401:
+                await self._handle_unauthorized(event_context)
+                event_payload = await event_context.provider.get_event(
+                    calendar_id=calendar_id,
+                    event_id=event_id,
+                )
+            elif exc.status_code == 404:
+                raise GoogleCalendarEventNotFoundError(
+                    f"Event {event_id} not found in calendar {calendar_id}."
+                ) from exc
+            else:
+                raise GoogleCalendarServiceError(
+                    f"Failed to fetch event from Google Calendar: {str(exc)}"
+                ) from exc
+
+        # Convert Supabase calendar to Google format for _build_event_payload
+        calendar_dict = {
+            "id": supabase_calendar["google_calendar_id"],
+            "summary": supabase_calendar.get("name") or supabase_calendar["google_calendar_id"],
+            "backgroundColor": supabase_calendar.get("color"),
+            "primary": supabase_calendar.get("is_primary", False),
+            "accessRole": supabase_calendar.get("access_role"),
+        }
+
+        return _build_event_payload(
+            event_payload,
+            calendar_dict,
+            event_context,
+            supabase_calendar,
+        )
 
     async def create_event(
         self,
@@ -123,20 +179,18 @@ class CalendarService:
         """Create a new event in Google Calendar."""
         contexts, calendars_by_id = await self._prepare_context(user_id)
 
-        # Find the account context that has access to this calendar
-        event_context: AccountContext | None = None
-        for context in contexts:
-            await self._hydrate_calendars([context])
-            for calendar in context.calendars:
-                if calendar.get("id") == calendar_id:
-                    event_context = context
-                    break
-            if event_context:
-                break
-
-        if event_context is None:
+        # Find the account context that has access to this calendar using Supabase data
+        supabase_calendar = calendars_by_id.get(calendar_id)
+        if not supabase_calendar:
             raise GoogleCalendarUserError(
                 f"Calendar {calendar_id} not found in any linked Google account."
+            )
+        
+        account_id = supabase_calendar["google_account_id"]
+        event_context = next((ctx for ctx in contexts if ctx.id == account_id), None)
+        if not event_context:
+            raise GoogleCalendarUserError(
+                f"Account for calendar {calendar_id} not found."
             )
 
         # Format event data for Google Calendar API
@@ -183,19 +237,16 @@ class CalendarService:
                     f"Failed to create event in Google Calendar: {str(exc)}"
                 ) from exc
 
-        # Find the calendar in the context's calendars
-        calendar_dict: Dict[str, Any] | None = None
-        for cal in event_context.calendars:
-            if cal.get("id") == calendar_id:
-                calendar_dict = cal
-                break
-        
-        if calendar_dict is None:
-            # Fallback if calendar not found in hydrated calendars
-            calendar_dict = {"id": calendar_id}
+        # Convert Supabase calendar to Google format for _build_event_payload
+        calendar_dict = {
+            "id": supabase_calendar["google_calendar_id"],
+            "summary": supabase_calendar.get("name") or supabase_calendar["google_calendar_id"],
+            "backgroundColor": supabase_calendar.get("color"),
+            "primary": supabase_calendar.get("is_primary", False),
+            "accessRole": supabase_calendar.get("access_role"),
+        }
         
         # Build response payload similar to _build_event_payload
-        supabase_calendar = calendars_by_id.get(calendar_id)
         return _build_event_payload(
             created_event,
             calendar_dict,
@@ -219,20 +270,18 @@ class CalendarService:
         """Update an existing event in Google Calendar."""
         contexts, calendars_by_id = await self._prepare_context(user_id)
 
-        # Find the account context that has access to this calendar
-        event_context: AccountContext | None = None
-        for context in contexts:
-            await self._hydrate_calendars([context])
-            for calendar in context.calendars:
-                if calendar.get("id") == calendar_id:
-                    event_context = context
-                    break
-            if event_context:
-                break
-
-        if event_context is None:
+        # Find the account context that has access to this calendar using Supabase data
+        supabase_calendar = calendars_by_id.get(calendar_id)
+        if not supabase_calendar:
             raise GoogleCalendarUserError(
                 f"Calendar {calendar_id} not found in any linked Google account."
+            )
+        
+        account_id = supabase_calendar["google_account_id"]
+        event_context = next((ctx for ctx in contexts if ctx.id == account_id), None)
+        if not event_context:
+            raise GoogleCalendarUserError(
+                f"Account for calendar {calendar_id} not found."
             )
 
         # Fetch the current event to preserve fields that aren't being updated.
@@ -323,18 +372,14 @@ class CalendarService:
                     f"Failed to update event in Google Calendar: {str(exc)}"
                 ) from exc
 
-        # Find the calendar in the context's calendars
-        calendar_dict: Dict[str, Any] | None = None
-        for cal in event_context.calendars:
-            if cal.get("id") == calendar_id:
-                calendar_dict = cal
-                break
-
-        if calendar_dict is None:
-            # Fallback if calendar not found in hydrated calendars
-            calendar_dict = {"id": calendar_id}
-
-        supabase_calendar = calendars_by_id.get(calendar_id)
+        # Convert Supabase calendar to Google format for _build_event_payload
+        calendar_dict = {
+            "id": supabase_calendar["google_calendar_id"],
+            "summary": supabase_calendar.get("name") or supabase_calendar["google_calendar_id"],
+            "backgroundColor": supabase_calendar.get("color"),
+            "primary": supabase_calendar.get("is_primary", False),
+            "accessRole": supabase_calendar.get("access_role"),
+        }
         return _build_event_payload(
             updated_event,
             calendar_dict,
@@ -350,22 +395,20 @@ class CalendarService:
         event_id: str,
     ) -> None:
         """Delete an event from Google Calendar."""
-        contexts, _ = await self._prepare_context(user_id)
+        contexts, calendars_by_id = await self._prepare_context(user_id)
 
-        # Find the account context that has access to this calendar
-        event_context: AccountContext | None = None
-        for context in contexts:
-            await self._hydrate_calendars([context])
-            for calendar in context.calendars:
-                if calendar.get("id") == calendar_id:
-                    event_context = context
-                    break
-            if event_context:
-                break
-
-        if event_context is None:
+        # Find the account context that has access to this calendar using Supabase data
+        supabase_calendar = calendars_by_id.get(calendar_id)
+        if not supabase_calendar:
             raise GoogleCalendarUserError(
                 f"Calendar {calendar_id} not found in any linked Google account."
+            )
+        
+        account_id = supabase_calendar["google_account_id"]
+        event_context = next((ctx for ctx in contexts if ctx.id == account_id), None)
+        if not event_context:
+            raise GoogleCalendarUserError(
+                f"Account for calendar {calendar_id} not found."
             )
 
         # Delete the event via provider
@@ -394,6 +437,10 @@ class CalendarService:
         self, user_id: str
     ) -> Tuple[List[AccountContext], Dict[str, Dict[str, Any]]]:
         """Prepare account contexts and calendars map."""
+        method_start = time_module.time()
+        log_start("backend.calendar_service._prepare_context", details=f"user_id={user_id}")
+        
+        repo_start = time_module.time()
         accounts = self.repository.get_accounts(user_id)
         if not accounts:
             raise GoogleCalendarUserError(
@@ -401,11 +448,20 @@ class CalendarService:
             )
 
         user_calendars = self.repository.get_calendars(user_id)
+        repo_duration = time_module.time() - repo_start
+        log_step("backend.calendar_service._prepare_context.repository", repo_duration, details=f"accounts={len(accounts)} calendars={len(user_calendars)}")
+        
         calendars_by_id = {
             calendar["google_calendar_id"]: calendar for calendar in user_calendars
         }
 
+        build_start = time_module.time()
         contexts = await self._build_account_contexts(accounts)
+        build_duration = time_module.time() - build_start
+        log_step("backend.calendar_service._prepare_context.build_contexts", build_duration, details=f"contexts={len(contexts)}")
+        
+        method_duration = time_module.time() - method_start
+        log_step("backend.calendar_service._prepare_context", method_duration)
         return contexts, calendars_by_id
 
     async def _build_account_contexts(
@@ -469,7 +525,16 @@ class CalendarService:
         window: Dict[str, Any],
     ) -> List[Dict[str, Any]]:
         """Get events for a time window."""
-        await self._hydrate_calendars(contexts)
+        method_start = time_module.time()
+        log_start("backend.calendar_service._events_for_window")
+        
+        # Convert Supabase calendars to Google format (no hydration needed)
+        convert_start = time_module.time()
+        self._convert_supabase_calendars_to_google_format(contexts, calendars_by_id)
+        convert_duration = time_module.time() - convert_start
+        log_step("backend.calendar_service._events_for_window.convert_calendars", convert_duration)
+        
+        collect_start = time_module.time()
         events = await self._collect_events_within_window(
             contexts,
             calendars_by_id,
@@ -479,21 +544,101 @@ class CalendarService:
             window["time_min_utc"],
             window["time_max_utc"],
         )
+        collect_duration = time_module.time() - collect_start
+        log_step("backend.calendar_service._events_for_window.collect_events", collect_duration, details=f"event_count={len(events)}")
+        
+        sort_start = time_module.time()
         events.sort(key=_event_sort_key)
+        sort_duration = time_module.time() - sort_start
+        log_step("backend.calendar_service._events_for_window.sort", sort_duration)
+        
+        method_duration = time_module.time() - method_start
+        log_step("backend.calendar_service._events_for_window", method_duration, details=f"event_count={len(events)}")
         return events
 
-    async def _hydrate_calendars(self, contexts: List[AccountContext]) -> None:
-        """Hydrate calendars for each context."""
+    def _convert_supabase_calendars_to_google_format(
+        self,
+        contexts: List[AccountContext],
+        calendars_by_id: Dict[str, Dict[str, Any]],
+    ) -> None:
+        """Convert Supabase calendars to Google API format and populate context.calendars.
+        
+        This replaces hydration for agent operations, using Supabase as the source of truth.
+        Calendars are grouped by google_account_id and matched to AccountContext objects.
+        
+        Args:
+            contexts: Account contexts to populate with calendars
+            calendars_by_id: Map of google_calendar_id to Supabase calendar records
+        """
+        method_start = time_module.time()
+        log_start("backend.calendar_service._convert_supabase_calendars_to_google_format", details=f"contexts={len(contexts)} calendars={len(calendars_by_id)}")
+        
+        # Group calendars by google_account_id for efficient lookup
+        calendars_by_account: Dict[str, List[Dict[str, Any]]] = {}
+        for calendar in calendars_by_id.values():
+            account_id = calendar.get("google_account_id")
+            if account_id:
+                if account_id not in calendars_by_account:
+                    calendars_by_account[account_id] = []
+                calendars_by_account[account_id].append(calendar)
+        
+        # Populate context.calendars for each account
         for context in contexts:
+            account_id = context.id
+            if not account_id:
+                continue
+            
+            account_calendars = calendars_by_account.get(account_id, [])
+            google_format_calendars = []
+            
+            for supabase_calendar in account_calendars:
+                # Convert Supabase format to Google API format
+                google_calendar = {
+                    "id": supabase_calendar["google_calendar_id"],
+                    "summary": supabase_calendar.get("name") or supabase_calendar["google_calendar_id"],
+                    "description": supabase_calendar.get("description"),
+                    "backgroundColor": supabase_calendar.get("color"),
+                    "foregroundColor": supabase_calendar.get("color"),  # Use same color for both
+                    "primary": supabase_calendar.get("is_primary", False),
+                    "accessRole": supabase_calendar.get("access_role"),
+                }
+                google_format_calendars.append(google_calendar)
+            
+            context.calendars = google_format_calendars
+        
+        method_duration = time_module.time() - method_start
+        log_step("backend.calendar_service._convert_supabase_calendars_to_google_format", method_duration, details=f"contexts={len(contexts)} total_calendars={sum(len(ctx.calendars) for ctx in contexts)}")
+
+    async def _hydrate_calendars(self, contexts: List[AccountContext]) -> None:
+        """Hydrate calendars for each context in parallel.
+        
+        Fetches calendars from Google and syncs to Supabase for all accounts
+        concurrently for maximum performance.
+        
+        NOTE: This is now only used by the refresh endpoint. Agent operations
+        use _convert_supabase_calendars_to_google_format() instead.
+        """
+        method_start = time_module.time()
+        log_start("backend.calendar_service._hydrate_calendars", details=f"contexts={len(contexts)}")
+        
+        async def hydrate_single_account(context: AccountContext, idx: int) -> None:
+            """Hydrate calendars for a single account context."""
             try:
+                list_start = time_module.time()
                 calendars = await context.provider.list_calendars()
+                list_duration = time_module.time() - list_start
+                log_step(f"backend.calendar_service._hydrate_calendars.list_calendars.context_{idx}", list_duration, details=f"calendar_count={len(calendars)}")
+                
                 context.calendars = calendars
                 
                 # Sync calendars to Supabase after fetching from Google
                 account_id = context.id
                 if account_id:
                     try:
+                        sync_start = time_module.time()
                         self.repository.sync_calendars(account_id, calendars)
+                        sync_duration = time_module.time() - sync_start
+                        log_step(f"backend.calendar_service._hydrate_calendars.sync_calendars.context_{idx}", sync_duration)
                         logger.debug(
                             "Synced %d calendars to Supabase for account_id=%s account=%s",
                             len(calendars),
@@ -540,7 +685,7 @@ class CalendarService:
                                 )
                     except GoogleCalendarAPIError as retry_exc:
                         if retry_exc.status_code in {401, 403}:
-                            continue
+                            return  # Skip this account
                         raise GoogleCalendarServiceError(
                             "Failed to list calendars from Google."
                         ) from retry_exc
@@ -548,6 +693,36 @@ class CalendarService:
                     raise GoogleCalendarServiceError(
                         "Unexpected error retrieving calendars from Google."
                     ) from exc
+        
+        # Process all accounts in parallel
+        await asyncio.gather(
+            *[hydrate_single_account(context, idx) for idx, context in enumerate(contexts)],
+            return_exceptions=True
+        )
+        
+        method_duration = time_module.time() - method_start
+        log_step("backend.calendar_service._hydrate_calendars", method_duration, details=f"contexts={len(contexts)}")
+
+    async def hydrate_calendars(self, user_id: str) -> None:
+        """Public method to refresh calendars from Google API and sync to Supabase.
+        
+        This is called by the refresh endpoint when the calendar accounts page is visited.
+        Fetches calendars from Google for all linked accounts and syncs them to Supabase.
+        
+        Args:
+            user_id: User ID to refresh calendars for
+        """
+        method_start = time_module.time()
+        log_start("backend.calendar_service.hydrate_calendars", details=f"user_id={user_id}")
+        
+        # Build contexts for all accounts
+        contexts, _ = await self._prepare_context(user_id)
+        
+        # Hydrate calendars (fetch from Google and sync to Supabase)
+        await self._hydrate_calendars(contexts)
+        
+        method_duration = time_module.time() - method_start
+        log_step("backend.calendar_service.hydrate_calendars", method_duration, details=f"user_id={user_id} contexts={len(contexts)}")
 
     async def _collect_events_within_window(
         self,
@@ -559,46 +734,117 @@ class CalendarService:
         time_min_utc: str,
         time_max_utc: str,
     ) -> List[Dict[str, Any]]:
-        """Collect events within a time window."""
-        events: List[Dict[str, Any]] = []
+        """Collect events within a time window.
+        
+        Queries all calendars in parallel for maximum performance. Each query uses
+        a fresh provider instance to avoid thread-safety issues with googleapiclient
+        (which uses C extensions that aren't thread-safe for concurrent access).
+        
+        Args:
+            contexts: Account contexts with their calendars already hydrated
+            calendars_by_id: Map of calendar IDs to Supabase calendar records
+            timezone_name: Timezone for window filtering
+            window_start_local: Start of time window in local timezone
+            window_end_local: End of time window in local timezone
+            time_min_utc: Start time in UTC ISO format for API queries
+            time_max_utc: End time in UTC ISO format for API queries
+            
+        Returns:
+            List of event payloads within the time window
+        """
+        method_start = time_module.time()
+        log_start("backend.calendar_service._collect_events_within_window", details=f"contexts={len(contexts)}")
+        
+        # Collect all calendars to query across all accounts
+        calendar_queries: List[Tuple[Dict[str, Any], AccountContext, str]] = []
         for context in contexts:
             for calendar in context.calendars:
                 calendar_id = calendar.get("id")
                 if not calendar_id:
                     continue
-                try:
-                    result = await context.provider.list_events(
-                        calendar_id=calendar_id,
-                        time_min=time_min_utc,
-                        time_max=time_max_utc,
-                    )
-                    items = result.get("items", []) if isinstance(result, dict) else result
-                except GoogleCalendarAPIError as exc:
-                    if exc.status_code in {401, 403, 404}:
-                        continue
-                    raise GoogleCalendarServiceError(
-                        "Failed to list events from Google."
-                    ) from exc
-
-                for item in items:
-                    if not isinstance(item, dict):
-                        continue
-                    if not _event_within_window(
-                        item,
-                        timezone_name,
-                        window_start_local,
-                        window_end_local,
-                    ):
-                        continue
-                    supabase_calendar = calendars_by_id.get(calendar_id)
-                    events.append(
-                        _build_event_payload(
-                            item,
-                            calendar,
-                            context,
-                            supabase_calendar,
-                        )
-                    )
+                calendar_queries.append((calendar, context, calendar_id))
+        
+        total_calendars = len(calendar_queries)
+        log_start("backend.calendar_service._collect_events_within_window.parallel_queries", details=f"calendar_count={total_calendars} accounts={len(contexts)}")
+        
+        async def query_single_calendar(
+            calendar: Dict[str, Any], 
+            context: AccountContext, 
+            calendar_id: str
+        ) -> Tuple[str, List[Dict[str, Any]], AccountContext, Dict[str, Any]]:
+            """Query a single calendar and return results.
+            
+            Creates a fresh provider instance for thread-safety. While this creates
+            more provider instances than strictly necessary (one per calendar vs one
+            per account), it's required because googleapiclient's service objects
+            are not thread-safe when accessed concurrently via asyncio.to_thread().
+            
+            Returns:
+                Tuple of (calendar_id, items, context, calendar_dict)
+            """
+            try:
+                # Create fresh provider for thread-safety (googleapiclient is not thread-safe)
+                # Note: We could reuse context.provider if queries were sequential, but
+                # parallel execution requires separate instances to avoid memory corruption
+                fresh_provider = GoogleCalendarProvider(
+                    access_token=context.access_token,
+                    refresh_token=context.account.get("refresh_token", ""),
+                )
+                result = await fresh_provider.list_events(
+                    calendar_id=calendar_id,
+                    time_min=time_min_utc,
+                    time_max=time_max_utc,
+                )
+                items = result.get("items", []) if isinstance(result, dict) else result
+                return (calendar_id, items, context, calendar)
+            except GoogleCalendarAPIError as exc:
+                if exc.status_code in {401, 403, 404}:
+                    # Return empty items for calendars we can't access (permissions, not found, etc.)
+                    return (calendar_id, [], context, calendar)
+                raise GoogleCalendarServiceError(
+                    f"Failed to list events from Google for calendar {calendar_id}."
+                ) from exc
+        
+        # Execute all calendar queries in parallel
+        parallel_start = time_module.time()
+        results = await asyncio.gather(
+            *[query_single_calendar(cal, ctx, cal_id) for cal, ctx, cal_id in calendar_queries],
+            return_exceptions=True
+        )
+        parallel_duration = time_module.time() - parallel_start
+        log_step("backend.calendar_service._collect_events_within_window.parallel_queries", parallel_duration, details=f"calendar_count={total_calendars}")
+        
+        # Process results and filter events within the time window
+        events: List[Dict[str, Any]] = []
+        for result in results:
+            if isinstance(result, Exception):
+                logger.warning("Failed to query calendar: %s", result)
+                continue
+            
+            calendar_id, items, context, calendar = result
+            
+            for item in items:
+                if not isinstance(item, dict):
+                    continue
+                # Filter events to only those within the local time window
+                if not _event_within_window(
+                    item,
+                    timezone_name,
+                    window_start_local,
+                    window_end_local,
+                ):
+                    continue
+                supabase_calendar = calendars_by_id.get(calendar_id)
+                event_payload = _build_event_payload(
+                    item,
+                    calendar,
+                    context,
+                    supabase_calendar,
+                )
+                events.append(event_payload)
+        
+        method_duration = time_module.time() - method_start
+        log_step("backend.calendar_service._collect_events_within_window", method_duration, details=f"total_events={len(events)} calendars_queried={total_calendars}")
         return events
 
     async def _ensure_access_token(self, account: Dict[str, Any]) -> str:
