@@ -109,6 +109,7 @@ struct AgentModal: View {
                 .truncationMode(.tail)
                 .frame(maxWidth: .infinity)
                 .multilineTextAlignment(.center)
+                .padding(.horizontal, horizontalPadding)
                 .padding(.vertical, verticalPadding)
             
         case .notice(let message):
@@ -119,6 +120,7 @@ struct AgentModal: View {
                 .truncationMode(.tail)
                 .frame(maxWidth: .infinity)
                 .multilineTextAlignment(.center)
+                .padding(.horizontal, horizontalPadding)
                 .padding(.vertical, verticalPadding)
             
         case .error(let message, let context):
@@ -129,6 +131,7 @@ struct AgentModal: View {
                 .truncationMode(.tail)
                 .frame(maxWidth: .infinity)
                 .multilineTextAlignment(.center)
+                .padding(.horizontal, horizontalPadding)
                 .padding(.vertical, verticalPadding)
         }
     }
