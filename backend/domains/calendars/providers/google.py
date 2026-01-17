@@ -585,7 +585,7 @@ def build_authorization_url(state: str) -> str:
     settings = get_settings()
     params = {
         "client_id": settings.google_client_id,
-        "redirect_uri": settings.google_oauth_redirect_uri,
+        "redirect_uri": settings.google_oauth_redirect_uri_resolved,
         "response_type": "code",
         "scope": " ".join(settings.google_oauth_scopes),
         "access_type": "offline",
@@ -604,7 +604,7 @@ async def exchange_code_for_tokens(code: str) -> GoogleTokens:
         "client_secret": settings.google_client_secret,
         "code": code,
         "grant_type": "authorization_code",
-        "redirect_uri": settings.google_oauth_redirect_uri,
+        "redirect_uri": settings.google_oauth_redirect_uri_resolved,
     }
     async with httpx.AsyncClient(timeout=15.0) as client:
         response = await client.post(

@@ -86,7 +86,7 @@ final class AgentViewModel: ObservableObject {
     private let scheduleService: GoogleCalendarScheduleServicing
     private let calendarService: CalendarServicing
     private let showScheduleHandler: ShowScheduleActionHandling
-    private let calendar: Calendar = Calendar.autoupdatingCurrent
+    private let calendar: Foundation.Calendar = Foundation.Calendar.autoupdatingCurrent
     
     private static let iso8601DateFormatter: ISO8601DateFormatter = {
         let formatter = ISO8601DateFormatter()
@@ -433,7 +433,7 @@ final class AgentViewModel: ObservableObject {
         scheduleErrorAutoDismiss()
     }
     
-    private func handleCalendarActionError(_ error: Error, action: ConfirmationActionType) {
+    private func handleCalendarActionError(_ error: Error, action: ConfirmationActionType, pendingAction: AgentAction? = nil) {
         let context: String
         switch action {
         case .createEvent: context = "Creating event"
@@ -446,6 +446,53 @@ final class AgentViewModel: ObservableObject {
         // Error modal will be shown via errorState
         // Auto-dismiss error after 4 seconds
         scheduleErrorAutoDismiss()
+        
+        // Clear agent action state as if the action was canceled
+        // This ensures schedule view highlights and temporary events don't linger
+        if let action = pendingAction {
+            clearActionState(for: action)
+        }
+    }
+    
+    /// Clears the state for a given action, similar to cancelPendingAction but doesn't require agentAction to be set
+    private func clearActionState(for action: AgentAction) {
+        switch action {
+        case .showEvent, .showSchedule:
+            // Clear focus for show actions
+            focusEvent = nil
+        case .createEvent:
+            // Remove the temporary event from display events
+            if let tempEventID = focusEvent?.eventID,
+               let tempEventIndex = displayEvents.firstIndex(where: { $0.event.id == tempEventID }) {
+                displayEvents.remove(at: tempEventIndex)
+                focusEvent = nil
+            }
+        case .deleteEvent:
+            // Clear the focus event to remove special styling
+            focusEvent = nil
+        case .updateEvent(let response):
+            // Remove the preview event and unhide the original event
+            let eventID = response.metadata.event_id
+            
+            // Remove the preview event (identified by focusEvent ID)
+            if let previewEventID = focusEvent?.eventID,
+               let previewIndex = displayEvents.firstIndex(where: { $0.event.id == previewEventID }) {
+                displayEvents.remove(at: previewIndex)
+            }
+            
+            // Unhide the original event - create new instance to ensure SwiftUI detects the change
+            if let originalIndex = displayEvents.firstIndex(where: { $0.event.id == eventID && $0.isHidden }) {
+                let originalEvent = displayEvents[originalIndex].event
+                let originalStyle = displayEvents[originalIndex].style
+                displayEvents[originalIndex] = DisplayEvent(
+                    event: originalEvent,
+                    style: originalStyle,
+                    isHidden: false
+                )
+            }
+            
+            focusEvent = nil
+        }
     }
     
     private func scheduleErrorAutoDismiss() {
@@ -871,6 +918,9 @@ final class AgentViewModel: ObservableObject {
             return
         }
         
+        // Store action before clearing it (needed for error cleanup)
+        let pendingAction = action
+        
         // Clear agent action immediately so modal disappears
         agentAction = nil
         
@@ -882,60 +932,25 @@ final class AgentViewModel: ObservableObject {
             // No confirmation needed for these actions
             break
         case .createEvent(let response):
-            await confirmCreateEvent(response: response, accessToken: accessToken)
+            await confirmCreateEvent(response: response, accessToken: accessToken, pendingAction: pendingAction)
         case .deleteEvent(let response):
-            await confirmDeleteEvent(response: response, accessToken: accessToken)
+            await confirmDeleteEvent(response: response, accessToken: accessToken, pendingAction: pendingAction)
         case .updateEvent(let response):
-            await confirmUpdateEvent(response: response, accessToken: accessToken)
+            await confirmUpdateEvent(response: response, accessToken: accessToken, pendingAction: pendingAction)
         }
     }
     
     func cancelPendingAction() {
         guard let action = agentAction else { return }
         
-        switch action {
-        case .showEvent, .showSchedule:
-            // Clear focus for show actions
-            focusEvent = nil
-        case .createEvent:
-            // Remove the temporary event from display events
-            if let tempEventID = focusEvent?.eventID,
-               let tempEventIndex = displayEvents.firstIndex(where: { $0.event.id == tempEventID }) {
-                displayEvents.remove(at: tempEventIndex)
-                focusEvent = nil
-            }
-        case .deleteEvent:
-            // Clear the focus event to remove special styling
-            focusEvent = nil
-        case .updateEvent(let response):
-            // Remove the preview event and unhide the original event
-            let eventID = response.metadata.event_id
-            
-            // Remove the preview event (identified by focusEvent ID)
-            if let previewEventID = focusEvent?.eventID,
-               let previewIndex = displayEvents.firstIndex(where: { $0.event.id == previewEventID }) {
-                displayEvents.remove(at: previewIndex)
-            }
-            
-            // Unhide the original event - create new instance to ensure SwiftUI detects the change
-            if let originalIndex = displayEvents.firstIndex(where: { $0.event.id == eventID && $0.isHidden }) {
-                let originalEvent = displayEvents[originalIndex].event
-                let originalStyle = displayEvents[originalIndex].style
-                displayEvents[originalIndex] = DisplayEvent(
-                    event: originalEvent,
-                    style: originalStyle,
-                    isHidden: false
-                )
-            }
-            
-            focusEvent = nil
-        }
+        // Clear the state for this action
+        clearActionState(for: action)
         
         // Clear agent action
         agentAction = nil
     }
     
-    private func confirmCreateEvent(response: CreateEventResponse, accessToken: String?) async {
+    private func confirmCreateEvent(response: CreateEventResponse, accessToken: String?, pendingAction: AgentAction) async {
         let metadata = response.metadata
         let startDate = metadata.start.dateTime
         let endDate = metadata.end.dateTime
@@ -994,12 +1009,13 @@ final class AgentViewModel: ObservableObject {
                 // Log full error details for debugging (verbose internal logging)
                 print("Error creating event: \(error)")
                 // Show brief, user-friendly message to user
-                handleCalendarActionError(error, action: .createEvent)
+                // Clear agent action state as if the action was canceled
+                handleCalendarActionError(error, action: .createEvent, pendingAction: pendingAction)
             }
         }
     }
 
-    private func confirmUpdateEvent(response: UpdateEventResponse, accessToken: String?) async {
+    private func confirmUpdateEvent(response: UpdateEventResponse, accessToken: String?, pendingAction: AgentAction) async {
         let metadata = response.metadata
         let eventID = metadata.event_id
         let calendarID = metadata.calendar_id
@@ -1074,12 +1090,13 @@ final class AgentViewModel: ObservableObject {
                 // Log full error details for debugging (verbose internal logging)
                 print("Error updating event: \(error)")
                 // Show brief, user-friendly message to user
-                handleCalendarActionError(error, action: .updateEvent)
+                // Clear agent action state as if the action was canceled
+                handleCalendarActionError(error, action: .updateEvent, pendingAction: pendingAction)
             }
         }
     }
     
-    private func confirmDeleteEvent(response: DeleteEventResponse, accessToken: String?) async {
+    private func confirmDeleteEvent(response: DeleteEventResponse, accessToken: String?, pendingAction: AgentAction) async {
         let eventID = response.metadata.event_id
         let calendarID = response.metadata.calendar_id
         
@@ -1131,7 +1148,8 @@ final class AgentViewModel: ObservableObject {
                 // Log full error details for debugging (verbose internal logging)
                 print("Error deleting event: \(error)")
                 // Show brief, user-friendly message to user
-                handleCalendarActionError(error, action: .deleteEvent)
+                // Clear agent action state as if the action was canceled
+                handleCalendarActionError(error, action: .deleteEvent, pendingAction: pendingAction)
             }
         }
     }

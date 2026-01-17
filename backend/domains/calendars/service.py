@@ -174,6 +174,10 @@ class CalendarService:
                     calendar_id=calendar_id,
                     event_data=event_data,
                 )
+            elif exc.status_code == 403:
+                # Preserve 403 errors so they can be handled properly in the endpoint
+                # The endpoint has specific logic to return user-friendly messages for 403
+                raise
             else:
                 raise GoogleCalendarServiceError(
                     f"Failed to create event in Google Calendar: {str(exc)}"
@@ -310,6 +314,10 @@ class CalendarService:
                     event_id=event_id,
                     event_data=event_data,
                 )
+            elif exc.status_code == 403:
+                # Preserve 403 errors so they can be handled properly in the endpoint
+                # The endpoint has specific logic to return user-friendly messages for 403
+                raise
             else:
                 raise GoogleCalendarServiceError(
                     f"Failed to update event in Google Calendar: {str(exc)}"
@@ -373,6 +381,10 @@ class CalendarService:
                     calendar_id=calendar_id,
                     event_id=event_id,
                 )
+            elif exc.status_code == 403:
+                # Preserve 403 errors so they can be handled properly in the endpoint
+                # The endpoint has specific logic to return user-friendly messages for 403
+                raise
             else:
                 raise GoogleCalendarServiceError(
                     f"Failed to delete event in Google Calendar: {str(exc)}"
@@ -478,27 +490,27 @@ class CalendarService:
                 context.calendars = calendars
                 
                 # Sync calendars to Supabase after fetching from Google
-                user_id = context.user_id
-                if user_id:
+                account_id = context.id
+                if account_id:
                     try:
-                        self.repository.sync_calendars(user_id, calendars)
+                        self.repository.sync_calendars(account_id, calendars)
                         logger.debug(
-                            "Synced %d calendars to Supabase for user_id=%s account=%s",
+                            "Synced %d calendars to Supabase for account_id=%s account=%s",
                             len(calendars),
-                            user_id,
+                            account_id,
                             context.email or "unknown",
                         )
                     except SupabaseStorageError as sync_exc:
                         # Log error but don't fail the operation - calendars are already in memory
                         logger.warning(
-                            "Failed to sync calendars to Supabase for user_id=%s account=%s: %s",
-                            user_id,
+                            "Failed to sync calendars to Supabase for account_id=%s account=%s: %s",
+                            account_id,
                             context.email or "unknown",
                             sync_exc,
                         )
                 else:
                     logger.warning(
-                        "Cannot sync calendars: missing user_id for account=%s",
+                        "Cannot sync calendars: missing account_id for account=%s",
                         context.email or "unknown",
                     )
             except GoogleCalendarAPIError as exc:
@@ -509,20 +521,20 @@ class CalendarService:
                         context.calendars = calendars
                         
                         # Sync calendars to Supabase after retry fetch
-                        user_id = context.user_id
-                        if user_id:
+                        account_id = context.id
+                        if account_id:
                             try:
-                                self.repository.sync_calendars(user_id, calendars)
+                                self.repository.sync_calendars(account_id, calendars)
                                 logger.debug(
-                                    "Synced %d calendars to Supabase for user_id=%s account=%s (after retry)",
+                                    "Synced %d calendars to Supabase for account_id=%s account=%s (after retry)",
                                     len(calendars),
-                                    user_id,
+                                    account_id,
                                     context.email or "unknown",
                                 )
                             except SupabaseStorageError as sync_exc:
                                 logger.warning(
-                                    "Failed to sync calendars to Supabase for user_id=%s account=%s (after retry): %s",
-                                    user_id,
+                                    "Failed to sync calendars to Supabase for account_id=%s account=%s (after retry): %s",
+                                    account_id,
                                     context.email or "unknown",
                                     sync_exc,
                                 )

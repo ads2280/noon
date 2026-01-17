@@ -347,7 +347,7 @@ private extension CalendarService {
     }
 
     static func defaultBaseURL() -> URL {
-        if let override = ProcessInfo.processInfo.environment["NOON_BACKEND_URL"], let url = URL(string: override) {
+        if let override = ProcessInfo.processInfo.environment["BACKEND_URL"], let url = URL(string: override) {
             return url
         }
         return URL(string: "http://localhost:8000")!

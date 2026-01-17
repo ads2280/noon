@@ -140,34 +140,77 @@ private extension CalendarAccountsView {
     }
 
     func accountRow(_ account: GoogleAccount) -> some View {
-        HStack(spacing: 16) {
-            Text(account.email)
-                .font(.headline)
-                .foregroundStyle(ColorPalette.Text.primary)
-                .lineLimit(1)
-                .truncationMode(.middle)
+        VStack(spacing: 0) {
+            // Account header row
+            HStack(spacing: 16) {
+                Text(account.email)
+                    .font(.headline)
+                    .foregroundStyle(ColorPalette.Text.primary)
+                    .lineLimit(1)
+                    .truncationMode(.middle)
 
-            Spacer()
+                Spacer()
+                
+                // Chevron icon
+                Image(systemName: "chevron.right")
+                    .font(.system(size: 14, weight: .semibold))
+                    .foregroundStyle(ColorPalette.Text.secondary)
+                    .rotationEffect(.degrees(viewModel.isExpanded(account) ? 90 : 0))
+                    .animation(.easeInOut(duration: 0.2), value: viewModel.isExpanded(account))
 
-            if viewModel.isDeleting(account) {
-                ProgressView()
-                    .progressViewStyle(.circular)
-                    .tint(ColorPalette.Text.secondary)
-            } else {
-                Button {
-                    accountPendingDeletion = account
-                } label: {
-                    Image(systemName: "trash.fill")
-                        .imageScale(.medium)
-                        .font(.system(size: 18, weight: .semibold))
+                if viewModel.isDeleting(account) {
+                    ProgressView()
+                        .progressViewStyle(.circular)
+                        .tint(ColorPalette.Text.secondary)
+                        .padding(.leading, 8)
+                } else {
+                    Button {
+                        accountPendingDeletion = account
+                    } label: {
+                        Image(systemName: "trash.fill")
+                            .imageScale(.medium)
+                            .font(.system(size: 18, weight: .semibold))
+                    }
+                    .buttonStyle(.plain)
+                    .foregroundStyle(ColorPalette.Semantic.destructive)
+                    .accessibilityLabel("Remove \(account.email)")
+                    .padding(.leading, 8)
                 }
-                .buttonStyle(.plain)
-                .foregroundStyle(ColorPalette.Semantic.destructive)
-                .accessibilityLabel("Remove \(account.email)")
+            }
+            .padding(.vertical, 18)
+            .padding(.horizontal, 20)
+            .contentShape(Rectangle())
+            .onTapGesture {
+                viewModel.toggleExpansion(for: account.id)
+            }
+            
+            // Calendar list (shown when expanded)
+            if viewModel.isExpanded(account) {
+                let calendars = account.calendars ?? []
+                VStack(spacing: 0) {
+                    Divider()
+                        .padding(.horizontal, 20)
+                    
+                    if calendars.isEmpty {
+                        Text("No calendars")
+                            .font(.subheadline)
+                            .foregroundStyle(ColorPalette.Text.secondary)
+                            .padding(.vertical, 12)
+                            .padding(.horizontal, 20)
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                    } else {
+                        VStack(spacing: 12) {
+                            ForEach(calendars, id: \.id) { calendar in
+                                calendarRow(calendar)
+                            }
+                        }
+                        .padding(.vertical, 12)
+                        .padding(.horizontal, 20)
+                    }
+                }
+                .transition(.opacity.combined(with: .move(edge: .top)))
             }
         }
-        .padding(.vertical, 18)
-        .padding(.horizontal, 20)
         .background(
             RoundedRectangle(cornerRadius: 20)
                 .fill(ColorPalette.Surface.elevated.opacity(0.85))
@@ -176,6 +219,37 @@ private extension CalendarAccountsView {
             RoundedRectangle(cornerRadius: 20)
                 .stroke(ColorPalette.Surface.overlay.opacity(0.4), lineWidth: 1)
         )
+        .animation(.easeInOut(duration: 0.2), value: viewModel.isExpanded(account))
+    }
+    
+    func calendarRow(_ calendar: GoogleCalendar) -> some View {
+        HStack(spacing: 12) {
+            // Color swatch for calendar
+            Circle()
+                .fill(Color.fromHex(calendar.color))
+                .frame(width: 20, height: 20)
+            
+            Text(calendar.name)
+                .font(.subheadline)
+                .foregroundStyle(ColorPalette.Text.primary)
+                .lineLimit(1)
+                .frame(maxWidth: .infinity, alignment: .leading)
+            
+            if calendar.isPrimary {
+                Text("Primary")
+                    .font(.caption)
+                    .foregroundStyle(ColorPalette.Text.secondary)
+                    .padding(.horizontal, 8)
+                    .padding(.vertical, 4)
+                    .background(
+                        Capsule()
+                            .fill(ColorPalette.Surface.overlay.opacity(0.3))
+                    )
+            }
+        }
+        .padding(.vertical, 8)
+        .padding(.horizontal, 12)
+        .frame(maxWidth: .infinity, alignment: .leading)
     }
 
     func successBanner(_ message: String) -> some View { EmptyView() }

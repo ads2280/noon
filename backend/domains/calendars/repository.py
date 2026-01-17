@@ -41,6 +41,20 @@ class CalendarRepository:
             raise SupabaseStorageError(exc.message) from exc
         return result.data or []
 
+    def get_calendars_by_account(self, google_account_id: str) -> List[Dict[str, Any]]:
+        """Get all calendars for a specific Google account."""
+        client = get_service_client()
+        try:
+            result = (
+                client.table("calendars")
+                .select("*")
+                .eq("google_account_id", google_account_id)
+                .execute()
+            )
+        except APIError as exc:
+            raise SupabaseStorageError(exc.message) from exc
+        return result.data or []
+
     async def get_account(self, user_id: str) -> Dict[str, Any] | None:
         """
         Get the first Google account for a user.
@@ -134,23 +148,44 @@ class CalendarRepository:
         if not response.data:
             raise SupabaseStorageError("Google account not found or already removed.")
 
+        # Calendars will be automatically deleted via CASCADE when the account is deleted
+        # But we can also explicitly delete them for clarity
         try:
-            client.table("calendars").delete().eq("user_id", user_id).execute()
+            client.table("calendars").delete().eq("google_account_id", account_id).execute()
         except APIError as exc:
             raise SupabaseStorageError(f"Failed to clear calendars: {exc.message}") from exc
 
-    def sync_calendars(self, user_id: str, calendars: Iterable[Dict[str, Any]]) -> None:
+    def sync_calendars(self, google_account_id: str, calendars: Iterable[Dict[str, Any]]) -> None:
         """
-        Upsert Google calendars for the user and remove stale entries.
+        Upsert Google calendars for the account and remove stale entries.
 
         Args:
-            user_id: Supabase user ID
+            google_account_id: Google account ID
             calendars: Iterable of calendar dictionaries with keys:
                 - id (str): Google calendar ID
                 - summary (str): Calendar display name
                 - primary (bool): Whether this is the primary calendar
-                - background_color (str | None): Hex color provided by Google
+                - backgroundColor (str | None): Hex color provided by Google (camelCase)
+                - foregroundColor (str | None): Hex color provided by Google (camelCase)
         """
+        # Fetch the account to get user_id for RLS
+        client = get_service_client()
+        try:
+            account_result = (
+                client.table("google_accounts")
+                .select("user_id")
+                .eq("id", google_account_id)
+                .limit(1)
+                .execute()
+            )
+        except APIError as exc:
+            raise SupabaseStorageError(exc.message) from exc
+        
+        if not account_result.data:
+            raise SupabaseStorageError(f"Google account {google_account_id} not found.")
+        
+        user_id = account_result.data[0]["user_id"]
+
         normalized: List[Dict[str, Any]] = []
         for calendar in calendars:
             google_id = calendar.get("id")
@@ -161,26 +196,25 @@ class CalendarRepository:
                 _without_none(
                     {
                         "user_id": user_id,
+                        "google_account_id": google_account_id,
                         "google_calendar_id": google_id,
                         "name": calendar.get("summary") or google_id,
                         "description": calendar.get("description"),
-                        "color": calendar.get("background_color")
-                        or calendar.get("foreground_color"),
+                        "color": calendar.get("backgroundColor")
+                        or calendar.get("foregroundColor"),
                         "is_primary": bool(calendar.get("primary", False)),
                     }
                 )
             )
 
-        client = get_service_client()
-
         try:
             if normalized:
                 client.table("calendars").upsert(
-                    normalized, on_conflict="user_id,google_calendar_id"
+                    normalized, on_conflict="google_account_id,google_calendar_id"
                 ).execute()
-            # Remove calendars that are no longer present
+            # Remove calendars that are no longer present for this account
             google_ids = [row["google_calendar_id"] for row in normalized]
-            delete_query = client.table("calendars").delete().eq("user_id", user_id)
+            delete_query = client.table("calendars").delete().eq("google_account_id", google_account_id)
             if google_ids:
                 delete_query = delete_query.not_.in_("google_calendar_id", google_ids)
             response = delete_query.execute()

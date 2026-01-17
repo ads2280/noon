@@ -18,6 +18,7 @@ final class CalendarAccountsViewModel: ObservableObject {
     @Published private(set) var linkingError: String?
     @Published private(set) var deletingAccountIDs: Set<String> = []
     @Published private(set) var deletionError: String?
+    @Published var expandedAccountIDs: Set<String> = []
 
     private let calendarService: CalendarServicing
     private let callbackScheme: String
@@ -169,6 +170,18 @@ final class CalendarAccountsViewModel: ObservableObject {
 
     func clearDeletionError() {
         deletionError = nil
+    }
+
+    func toggleExpansion(for accountID: String) {
+        if expandedAccountIDs.contains(accountID) {
+            expandedAccountIDs.remove(accountID)
+        } else {
+            expandedAccountIDs.insert(accountID)
+        }
+    }
+
+    func isExpanded(_ account: GoogleAccount) -> Bool {
+        expandedAccountIDs.contains(account.id)
     }
 
     private func currentAccessToken() async -> String? {

@@ -38,12 +38,26 @@ class GoogleAccountResponse(GoogleAccountBase):
     user_id: str
     created_at: datetime
     updated_at: datetime
+    calendars: Optional[List[CalendarResponse]] = None
 
 
 class GoogleOAuthStartResponse(BaseModel):
     authorization_url: HttpUrl
     state: str = Field(..., min_length=10)
     state_expires_at: datetime
+
+
+# Calendar schemas
+class CalendarResponse(BaseModel):
+    id: str
+    google_calendar_id: str
+    name: str
+    description: Optional[str] = None
+    color: Optional[str] = None
+    is_primary: bool = False
+    google_account_id: str
+    created_at: datetime
+    updated_at: datetime
 
 
 # Calendar event schemas

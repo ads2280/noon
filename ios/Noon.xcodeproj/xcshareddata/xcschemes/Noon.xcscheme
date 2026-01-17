@@ -52,7 +52,7 @@
       </BuildableProductRunnable>
       <EnvironmentVariables>
          <EnvironmentVariable
-            key = "NOON_BACKEND_URL"
+            key = "BACKEND_URL"
             value = "https://unesoteric-yi-doggedly.ngrok-free.dev"
             isEnabled = "YES">
          </EnvironmentVariable>

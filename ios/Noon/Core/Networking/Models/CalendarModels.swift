@@ -16,6 +16,7 @@ struct GoogleAccount: Identifiable, Decodable, Hashable {
     let avatarURL: String?
     let createdAt: Date
     let updatedAt: Date
+    let calendars: [GoogleCalendar]?
 
     private enum CodingKeys: String, CodingKey {
         case id
@@ -26,6 +27,7 @@ struct GoogleAccount: Identifiable, Decodable, Hashable {
         case avatarURL
         case createdAt
         case updatedAt
+        case calendars
     }
 
     private enum LegacyCodingKeys: String, CodingKey {
@@ -37,6 +39,7 @@ struct GoogleAccount: Identifiable, Decodable, Hashable {
         case avatarURL = "avatar_url"
         case createdAt = "created_at"
         case updatedAt = "updated_at"
+        case calendars
     }
 
     init(id: String,
@@ -46,7 +49,8 @@ struct GoogleAccount: Identifiable, Decodable, Hashable {
          displayName: String?,
          avatarURL: String?,
          createdAt: Date,
-         updatedAt: Date) {
+         updatedAt: Date,
+         calendars: [GoogleCalendar]? = nil) {
         self.id = id
         self.userId = userId
         self.googleUserId = googleUserId
@@ -55,6 +59,7 @@ struct GoogleAccount: Identifiable, Decodable, Hashable {
         self.avatarURL = avatarURL
         self.createdAt = createdAt
         self.updatedAt = updatedAt
+        self.calendars = calendars
     }
 
     init(from decoder: Decoder) throws {
@@ -90,6 +95,47 @@ struct GoogleAccount: Identifiable, Decodable, Hashable {
         self.avatarURL = try decodeOptional(String.self, camelKey: .avatarURL, snakeKey: .avatarURL)
         self.createdAt = try decodeRequired(Date.self, camelKey: .createdAt, snakeKey: .createdAt)
         self.updatedAt = try decodeRequired(Date.self, camelKey: .updatedAt, snakeKey: .updatedAt)
+        
+        // Decode calendars - try camelCase first, then snake_case
+        if let camelCalendars = try? camel.decodeIfPresent([GoogleCalendar].self, forKey: .calendars) {
+            self.calendars = camelCalendars
+        } else if let snakeCalendars = try? snake.decodeIfPresent([GoogleCalendar].self, forKey: .calendars) {
+            self.calendars = snakeCalendars
+        } else {
+            self.calendars = nil
+        }
+    }
+}
+
+struct GoogleCalendar: Identifiable, Decodable, Hashable {
+    let id: String
+    let googleCalendarId: String
+    let name: String
+    let description: String?
+    let color: String?
+    let isPrimary: Bool
+    let googleAccountId: String
+    let createdAt: Date
+    let updatedAt: Date
+
+    init(id: String,
+         googleCalendarId: String,
+         name: String,
+         description: String?,
+         color: String?,
+         isPrimary: Bool,
+         googleAccountId: String,
+         createdAt: Date,
+         updatedAt: Date) {
+        self.id = id
+        self.googleCalendarId = googleCalendarId
+        self.name = name
+        self.description = description
+        self.color = color
+        self.isPrimary = isPrimary
+        self.googleAccountId = googleAccountId
+        self.createdAt = createdAt
+        self.updatedAt = updatedAt
     }
 }
 
@@ -191,7 +237,7 @@ struct GoogleCalendarSchedule: Decodable, Sendable {
 
         private static let dateFormatter: DateFormatter = {
             let formatter = DateFormatter()
-            formatter.calendar = Calendar(identifier: .gregorian)
+            formatter.calendar = Foundation.Calendar(identifier: .gregorian)
             formatter.locale = Locale(identifier: "en_US_POSIX")
             formatter.timeZone = TimeZone(secondsFromGMT: 0)
             formatter.dateFormat = "yyyy-MM-dd"

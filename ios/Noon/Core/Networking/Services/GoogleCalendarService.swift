@@ -132,7 +132,7 @@ private extension GoogleCalendarScheduleService {
     }()
 
     static func defaultBaseURL() -> URL {
-        if let override = ProcessInfo.processInfo.environment["NOON_BACKEND_URL"],
+        if let override = ProcessInfo.processInfo.environment["BACKEND_URL"],
            let url = URL(string: override) {
             return url
         }

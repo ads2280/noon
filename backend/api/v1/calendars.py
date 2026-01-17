@@ -14,6 +14,7 @@ from domains.calendars.schemas import (
     GoogleAccountResponse,
     GoogleAccountCreate,
     GoogleOAuthStartResponse,
+    CalendarResponse,
     ScheduleRequest,
     ScheduleResponse,
     CreateEventRequest,
@@ -54,16 +55,26 @@ logger = logging.getLogger(__name__)
 async def list_accounts(
     current_user: AuthenticatedUser = Depends(get_current_user),
 ) -> list[GoogleAccountResponse]:
-    """List all Google accounts for the current user."""
+    """List all Google accounts for the current user with their calendars."""
     repository = CalendarRepository()
     try:
-        rows = repository.get_accounts(current_user.id)
+        account_rows = repository.get_accounts(current_user.id)
+        accounts = []
+        for account_row in account_rows:
+            account_id = account_row["id"]
+            # Fetch calendars for this account
+            calendar_rows = repository.get_calendars_by_account(account_id)
+            calendars = [CalendarResponse(**cal) for cal in calendar_rows] if calendar_rows else []
+            # Create account response with calendars
+            account_dict = dict(account_row)
+            account_dict["calendars"] = calendars
+            accounts.append(GoogleAccountResponse(**account_dict))
     except SupabaseStorageError as exc:
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=str(exc)
         ) from exc
 
-    return [GoogleAccountResponse(**row) for row in rows]
+    return accounts
 
 
 @router.post("/accounts/oauth/start", response_model=GoogleOAuthStartResponse)
@@ -151,8 +162,9 @@ async def oauth_callback(state: str, code: str) -> RedirectResponse:
 
     repository = CalendarRepository()
     try:
-        repository.upsert_account(user_id, payload)
-        repository.sync_calendars(user_id, calendars)
+        account = repository.upsert_account(user_id, payload)
+        account_id = account["id"]
+        repository.sync_calendars(account_id, calendars)
     except SupabaseStorageError as exc:
         logger.error("Failed to persist Google account for user %s: %s", user_id, exc)
         redirect_url = build_app_redirect_url(
