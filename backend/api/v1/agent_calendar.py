@@ -117,23 +117,15 @@ async def list_calendars(
         return {"calendars": formatted_calendars}
         
     except Exception as e:
+        # Log full error details for debugging (verbose internal logging)
         logger.error(
             f"Failed to list calendars user_id={current_user.id}: {e}",
             exc_info=True,
         )
+        # Return brief, user-friendly message (not technical details)
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"Failed to list calendars: {str(e)}"
-        ) from e
-        
-    except Exception as e:
-        logger.error(
-            f"Failed to list calendars user_id={current_user.id}: {e}",
-            exc_info=True,
-        )
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"Failed to list calendars: {str(e)}"
+            detail="An error occurred while loading your calendars. Please try again."
         ) from e
 
 
@@ -231,12 +223,14 @@ async def get_schedule(
             detail=str(e)
         ) from e
     except Exception as e:
+        # Log full error details for debugging (verbose internal logging)
         logger.exception(
             f"Unexpected error getting schedule user_id={current_user.id}: {e}",
         )
+        # Return brief, user-friendly message (not technical details)
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"Failed to get schedule: {str(e)}"
+            detail="An error occurred while loading your schedule. Please try again."
         ) from e
 
 
@@ -324,12 +318,14 @@ async def search_events(
             detail=f"Invalid datetime format: {str(e)}"
         ) from e
     except Exception as e:
+        # Log full error details for debugging (verbose internal logging)
         logger.exception(
             f"Unexpected error searching events user_id={current_user.id}: {e}",
         )
+        # Return brief, user-friendly message (not technical details)
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"Failed to search events: {str(e)}"
+            detail="An error occurred while searching for events. Please try again."
         ) from e
 
 
@@ -380,10 +376,12 @@ async def get_event(
             detail=str(e)
         ) from e
     except Exception as e:
+        # Log full error details for debugging (verbose internal logging)
         logger.exception(
             f"Unexpected error getting event user_id={current_user.id} calendar={calendar_id} event={event_id}: {e}",
         )
+        # Return brief, user-friendly message (not technical details)
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"Failed to get event: {str(e)}"
+            detail="An error occurred while loading the event. Please try again."
         ) from e

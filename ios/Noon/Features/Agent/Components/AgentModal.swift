@@ -16,6 +16,7 @@ enum AgentModalState {
     )
     case thinking(text: String)
     case notice(message: String)
+    case error(message: String, context: String)
 }
 
 struct AgentModal: View {
@@ -115,6 +116,16 @@ struct AgentModal: View {
                 .font(.system(size: 14, weight: .regular))
                 .foregroundColor(ColorPalette.Text.secondary)
                 .lineLimit(1)
+                .truncationMode(.tail)
+                .frame(maxWidth: .infinity)
+                .multilineTextAlignment(.center)
+                .padding(.vertical, verticalPadding)
+            
+        case .error(let message, let context):
+            Text("\(context): \(message)")
+                .font(.system(size: 14, weight: .regular))
+                .foregroundColor(ColorPalette.Text.secondary)
+                .lineLimit(2)
                 .truncationMode(.tail)
                 .frame(maxWidth: .infinity)
                 .multilineTextAlignment(.center)

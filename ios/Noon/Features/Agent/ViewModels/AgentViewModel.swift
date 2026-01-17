@@ -17,6 +17,11 @@ final class AgentViewModel: ObservableObject {
         case completed(result: AgentActionResult)
         case failed(message: String)
     }
+    
+    struct AgentError {
+        let message: String  // What went wrong
+        let context: String  // Where it happened (e.g., "Agent processing", "Creating event")
+    }
 
     @Published private(set) var displayState: DisplayState = .idle
     @Published private(set) var isRecording: Bool = false
@@ -30,8 +35,10 @@ final class AgentViewModel: ObservableObject {
     @Published var isConfirmingAction: Bool = false
     @Published var transcriptionText: String?
     @Published var noticeMessage: String?
+    @Published var errorState: AgentError?
     
     private var noticeDismissTask: Task<Void, Never>?
+    private var errorDismissTask: Task<Void, Never>?
     
     enum AgentAction {
         case showEvent(ShowEventResponse)
@@ -138,11 +145,14 @@ final class AgentViewModel: ObservableObject {
         displayState = .recording
         transcriptionText = nil // Clear previous transcription when starting new recording
         noticeMessage = nil // Clear previous notice when starting new recording
+        errorState = nil // Clear any previous errors when starting new recording
+        errorDismissTask?.cancel() // Cancel any pending error dismiss task
 
         Task { @MainActor in
             do {
                 try await recorder.startRecording()
             } catch {
+                // Recording errors are not agent/calendar action errors, use generic handler
                 handle(error: error)
             }
         }
@@ -192,14 +202,18 @@ final class AgentViewModel: ObservableObject {
 
                 displayState = .completed(result: result)
                 
-                // Set notice message for no-action and error responses (after clearing transcription)
+                // Set notice message for no-action responses (after clearing transcription)
                 switch result.agentResponse {
                 case .noAction(let response):
                     setNoticeMessage(response.metadata.reason)
                     print("Notice message set for no-action: \(response.metadata.reason)")
                 case .error(let error):
-                    setNoticeMessage(error.message)
-                    print("Notice message set for error: \(error.message)")
+                    // Handle agent error - this is an agent mistake, not a user error
+                    // Log full error details for debugging (verbose internal logging)
+                    print("Agent error handled: \(error.message)")
+                    // AgentErrorResponse conforms to Error, so we can pass it directly
+                    // This will show brief, user-friendly message to user
+                    handleAgentError(error as Error, context: "Agent processing")
                 default:
                     // Clear notice message for successful actions
                     clearNoticeMessage()
@@ -209,7 +223,8 @@ final class AgentViewModel: ObservableObject {
                     print("Agent response (\(result.statusCode)): \(responseString)")
                 }
             } catch {
-                handle(error: error)
+                // Errors during agent action flow should use agent error handler
+                handleAgentError(error, context: "Agent processing")
             }
         }
     }
@@ -219,9 +234,16 @@ final class AgentViewModel: ObservableObject {
         isRecording = false
         transcriptionText = nil
         clearNoticeMessage()
+        errorState = nil
+        errorDismissTask?.cancel()
     }
     
     private func setNoticeMessage(_ message: String) {
+        // Don't override error state with notice messages
+        guard errorState == nil else {
+            return
+        }
+        
         // Cancel any existing dismiss task
         noticeDismissTask?.cancel()
         
@@ -244,16 +266,25 @@ final class AgentViewModel: ObservableObject {
     }
 
     private func handle(error: Error) {
-        let errorMessage = localizedMessage(for: error)
-        displayState = .failed(message: errorMessage)
-        setNoticeMessage(errorMessage)
-        isRecording = false
-        // Keep transcriptionText visible even on error, as transcription may have succeeded
+        // This method is only for non-agent/non-calendar action errors
+        // For agent and calendar action errors, use handleAgentError or handleCalendarActionError
+        
+        // Log full error details for debugging (verbose internal logging)
         if let serverError = error as? ServerError {
             print("Request failed (\(serverError.statusCode)): \(serverError.message)")
         } else {
             print("Request failed: \(error.localizedDescription)")
         }
+        
+        // Show brief, user-friendly message (not technical details)
+        let errorMessage = localizedMessage(for: error)
+        displayState = .failed(message: errorMessage)
+        // Only set notice if no error state is present
+        if errorState == nil {
+            setNoticeMessage(errorMessage)
+        }
+        isRecording = false
+        // Keep transcriptionText visible even on error, as transcription may have succeeded
     }
 
     func loadCurrentDaySchedule(force: Bool = false) async throws {
@@ -330,6 +361,109 @@ final class AgentViewModel: ObservableObject {
             return "Something went wrong: \(error.localizedDescription)"
         }
     }
+    
+    // MARK: - Error Categorization
+    
+    private func categorizeError(_ error: Error, context: String) -> AgentError {
+        var message: String
+        
+        // Categorize by error type
+        if let agentErrorResponse = error as? AgentErrorResponse {
+            // Agent error response from backend - use the message directly
+            // This message should already be user-friendly from the backend
+            let trimmedMessage = agentErrorResponse.message.trimmingCharacters(in: .whitespacesAndNewlines)
+            if trimmedMessage.isEmpty {
+                message = "Agent failed to handle request precisely. Please try rephrasing your request."
+            } else {
+                message = trimmedMessage
+            }
+        } else if let serverError = error as? ServerError {
+            // First, check if the server error message is user-friendly (from backend)
+            // Backend should return proper error messages in ServerError.message
+            let backendMessage = serverError.message.trimmingCharacters(in: .whitespacesAndNewlines)
+            
+            // If backend provided a meaningful message, use it (but sanitize if needed)
+            if !backendMessage.isEmpty && backendMessage != "Unknown error" {
+                // Use backend message directly - it should already be user-friendly
+                message = backendMessage
+            } else {
+                // Fallback to status code-based categorization
+                switch serverError.statusCode {
+                case 401, 403:
+                    message = "Authentication failed"
+                case 404:
+                    message = "Resource not found"
+                case 400...499:
+                    message = "Request failed"
+                case 500...599:
+                    message = "Server error"
+                default:
+                    message = "Network error"
+                }
+            }
+        } else if error is AccessTokenError {
+            message = "Authentication failed"
+        } else if error is CalendarServiceError || error is GoogleCalendarScheduleServiceError {
+            message = "Calendar operation failed"
+        } else if error is URLError {
+            message = "Network connection failed"
+        } else {
+            // For other errors, try to use localizedDescription if available
+            let errorDescription = error.localizedDescription
+            if !errorDescription.isEmpty && errorDescription != "The operation couldn't be completed." {
+                message = errorDescription
+            } else {
+                message = "Something went wrong"
+            }
+        }
+        
+        return AgentError(message: message, context: context)
+    }
+    
+    // MARK: - Error Handling
+    
+    private func handleAgentError(_ error: Error, context: String = "Agent processing") {
+        let errorState = categorizeError(error, context: context)
+        self.errorState = errorState
+        displayState = .failed(message: errorState.message)
+        // Clear transcription/notice when showing error
+        transcriptionText = nil
+        noticeMessage = nil
+        // Auto-dismiss error after 4 seconds
+        scheduleErrorAutoDismiss()
+    }
+    
+    private func handleCalendarActionError(_ error: Error, action: ConfirmationActionType) {
+        let context: String
+        switch action {
+        case .createEvent: context = "Creating event"
+        case .updateEvent: context = "Updating event"
+        case .deleteEvent: context = "Deleting event"
+        }
+        let errorState = categorizeError(error, context: context)
+        self.errorState = errorState
+        // Don't set displayState to failed for calendar action errors
+        // Error modal will be shown via errorState
+        // Auto-dismiss error after 4 seconds
+        scheduleErrorAutoDismiss()
+    }
+    
+    private func scheduleErrorAutoDismiss() {
+        // Cancel any existing dismiss task
+        errorDismissTask?.cancel()
+        
+        // Schedule new dismiss task for 4 seconds
+        errorDismissTask = Task { @MainActor in
+            try? await Task.sleep(nanoseconds: 4_000_000_000) // 4 seconds
+            if !Task.isCancelled {
+                errorState = nil
+            }
+        }
+    }
+    
+    func dismissError() {
+        errorState = nil
+    }
 
     private func handle(agentResponse: AgentResponse, accessToken: String) async throws {
         switch agentResponse {
@@ -347,8 +481,12 @@ final class AgentViewModel: ObservableObject {
             setNoticeMessage(response.metadata.reason)
             print("Setting notice message for no-action: \(response.metadata.reason)")
         case .error(let error):
-            setNoticeMessage(error.message)
-            print("Setting notice message for error: \(error.message)")
+            // Handle agent error - this is an agent mistake, not a user error
+            // Log full error details for debugging (verbose internal logging)
+            print("Agent error handled: \(error.message)")
+            // AgentErrorResponse conforms to Error, so we can pass it directly
+            // This will show brief, user-friendly message to user
+            handleAgentError(error as Error, context: "Agent processing")
         }
     }
 
@@ -853,8 +991,10 @@ final class AgentViewModel: ObservableObject {
                 
                 print("Created event: \(createdEventID)")
             } catch {
+                // Log full error details for debugging (verbose internal logging)
                 print("Error creating event: \(error)")
-                handle(error: error)
+                // Show brief, user-friendly message to user
+                handleCalendarActionError(error, action: .createEvent)
             }
         }
     }
@@ -931,8 +1071,10 @@ final class AgentViewModel: ObservableObject {
 
                 print("Updated event: \(eventID)")
             } catch {
+                // Log full error details for debugging (verbose internal logging)
                 print("Error updating event: \(error)")
-                handle(error: error)
+                // Show brief, user-friendly message to user
+                handleCalendarActionError(error, action: .updateEvent)
             }
         }
     }
@@ -986,8 +1128,10 @@ final class AgentViewModel: ObservableObject {
                 
                 print("Deleted event: \(eventID)")
             } catch {
+                // Log full error details for debugging (verbose internal logging)
                 print("Error deleting event: \(error)")
-                handle(error: error)
+                // Show brief, user-friendly message to user
+                handleCalendarActionError(error, action: .deleteEvent)
             }
         }
     }

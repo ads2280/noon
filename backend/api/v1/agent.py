@@ -75,12 +75,14 @@ async def transcribe_audio(
                 status_code=400, detail=f"Transcription error: {str(e)}"
             )
         except Exception as e:
+            # Log full error details for debugging (verbose internal logging)
             logger.error(
                 f"Transcription failed user_id={current_user.id} file={file.filename}: {e}",
                 exc_info=True,
             )
+            # Return brief, user-friendly message (not technical details)
             raise HTTPException(
-                status_code=500, detail=f"Failed to transcribe audio: {str(e)}"
+                status_code=500, detail="An error occurred while transcribing audio. Please try again."
             )
 
         if not transcribed_text or not transcribed_text.strip():
@@ -94,13 +96,15 @@ async def transcribe_audio(
     except HTTPException:
         raise
     except Exception as e:
+        # Log full error details for debugging (verbose internal logging)
         logger.error(
             f"Transcription endpoint failed user_id={current_user.id}: {e}",
             exc_info=True,
         )
+        # Return brief, user-friendly message (not technical details)
         raise HTTPException(
             status_code=500,
-            detail=f"Failed to transcribe audio: {str(e)}"
+            detail="An error occurred while transcribing audio. Please try again."
         )
 
 
@@ -186,7 +190,7 @@ async def agent_action(
             )
             raise HTTPException(
                 status_code=500,
-                detail=f"Failed to retrieve user timezone: {str(e)}"
+                detail="An error occurred while retrieving your timezone settings. Please try again."
             )
         
         # Validate timezone is set and not default 'UTC'
@@ -282,32 +286,40 @@ async def agent_action(
                 return response.model_dump()
             else:
                 # Fallback for unexpected responses - treat as error
+                # This is an agent mistake, not a user error
+                # Log full details for debugging (verbose internal logging)
                 logger.warning(
                     f"Unexpected result format user_id={current_user.id} "
                     f"keys={list(result.keys())}"
                 )
+                # Return brief, user-friendly message (not technical details)
                 error_response = ErrorResponse(
-                    message=f"Unexpected response format from agent: {list(result.keys())}"
+                    message="Agent failed to handle request precisely. Please try rephrasing your request."
                 )
                 return error_response.model_dump()
         except ValidationError as e:
+            # This is an agent mistake (invalid response format), not a user error
+            # Log full details for debugging (verbose internal logging)
             logger.error(
                 f"Response validation failed user_id={current_user.id}: {e}",
                 exc_info=True,
             )
+            # Return brief, user-friendly message (not technical details)
             error_response = ErrorResponse(
-                message=f"Invalid response format from agent: {str(e)}"
+                message="Agent failed to handle request precisely. Please try rephrasing your request."
             )
             return error_response.model_dump()
 
     except HTTPException:
         raise
     except Exception as e:
+        # Log full error details for debugging (verbose internal logging)
         logger.error(
             f"Agent invocation failed user_id={current_user.id}: {e}",
             exc_info=True,
         )
+        # Return brief, user-friendly message (not technical details)
         raise HTTPException(
             status_code=500,
-            detail=f"Failed to invoke agent: {str(e)}"
+            detail="An error occurred while processing your request. Please try again."
         )

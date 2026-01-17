@@ -69,9 +69,14 @@ struct AgentView: View {
     }
 
     private var agentModalState: AgentModalState? {
-        // Priority: confirmation > thinking > notice
-        // Only show confirmation once schedule is ready AND transcription is cleared to ensure smooth transition
-        if let agentAction = viewModel.agentAction, 
+        // Priority: error > confirmation > thinking > notice
+        // Error has highest priority - critical state that needs immediate attention
+        if let errorState = viewModel.errorState {
+            return .error(
+                message: errorState.message,
+                context: errorState.context
+            )
+        } else if let agentAction = viewModel.agentAction, 
            agentAction.requiresConfirmation, 
            viewModel.hasLoadedSchedule, 
            viewModel.transcriptionText == nil {

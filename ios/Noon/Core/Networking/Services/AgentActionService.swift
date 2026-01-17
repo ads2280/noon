@@ -41,7 +41,17 @@ struct AgentActionService: AgentActionServicing {
 
         let statusCode = httpResponse.statusCode
         guard 200..<300 ~= statusCode else {
-            let message = String(data: data, encoding: .utf8) ?? "Unknown error"
+            // Extract error message from response body
+            // FastAPI returns JSON with "detail" field for HTTPException
+            let message: String
+            if let jsonData = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+               let detail = jsonData["detail"] as? String {
+                message = detail
+            } else if let errorText = String(data: data, encoding: .utf8), !errorText.isEmpty {
+                message = errorText
+            } else {
+                message = "Unknown error"
+            }
             throw ServerError(statusCode: statusCode, message: message)
         }
 

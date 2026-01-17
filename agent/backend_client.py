@@ -91,10 +91,25 @@ class BackendClient(CalendarClient):
                 response.raise_for_status()
                 return response.json()
             except httpx.HTTPStatusError as e:
+                # Extract error message from response body
+                # FastAPI returns JSON with "detail" field for HTTPException
+                error_message = "Unknown error"
+                try:
+                    error_data = e.response.json()
+                    if isinstance(error_data, dict) and "detail" in error_data:
+                        error_message = str(error_data["detail"])
+                    elif isinstance(error_data, dict) and "message" in error_data:
+                        error_message = str(error_data["message"])
+                    elif e.response.text:
+                        error_message = e.response.text
+                except Exception:
+                    # If we can't parse the error, use response text or status code
+                    error_message = e.response.text or f"Backend API error: {e.response.status_code}"
+                
                 logger.error(
-                    f"Backend API error: {method} {url} - {e.response.status_code}: {e.response.text}"
+                    f"Backend API error: {method} {url} - {e.response.status_code}: {error_message}"
                 )
-                raise ValueError(f"Backend API error: {e.response.status_code}") from e
+                raise ValueError(f"Backend API error: {error_message}") from e
             except httpx.RequestError as e:
                 logger.error(f"Backend API request failed: {method} {url} - {str(e)}")
                 raise ValueError(f"Backend API request failed: {str(e)}") from e
