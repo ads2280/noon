@@ -136,9 +136,7 @@ struct AgentView: View {
                             .foregroundStyle(ColorPalette.Text.inverted)
                     }
                 }
-                .frame(maxWidth: .infinity)
         }
-        .scaleEffect(viewModel.isRecording ? 1.05 : 1.0)
         .opacity(viewModel.isRecording ? 0.85 : 1.0)
         .buttonStyle(.plain)
         .disabled(isLoading)

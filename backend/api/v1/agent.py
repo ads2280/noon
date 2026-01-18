@@ -95,7 +95,7 @@ async def transcribe_audio(
         if not transcribed_text or not transcribed_text.strip():
             raise HTTPException(
                 status_code=400,
-                detail="Transcription resulted in empty text. Please ensure the audio file contains speech.",
+                detail="Transcription resulted in empty text.",
             )
 
         endpoint_duration = time.time() - endpoint_start

@@ -9,31 +9,37 @@ import SwiftUI
 
 struct MicrophoneButtonContainer<Content: View>: View {
     let content: Content
-    private let cornerRadius: CGFloat = 22
-    private let horizontalPadding: CGFloat = 24 // Match schedule view horizontal padding
-    private let verticalPadding: CGFloat = 12 // Top and bottom padding inside container
+    private let buttonWidth: CGFloat = 196
     private let buttonHeight: CGFloat = 72
+    private let padding: CGFloat = 12 // Same padding on all sides
+    
+    private var containerHeight: CGFloat {
+        buttonHeight + padding * 2
+    }
+    
+    private var cornerRadius: CGFloat {
+        containerHeight / 2 // Fully rounded edges (capsule shape)
+    }
     
     init(@ViewBuilder content: () -> Content) {
         self.content = content()
     }
     
     var body: some View {
-        HStack(spacing: 0) {
+        HStack {
             Spacer()
-                .frame(width: horizontalPadding)
             
             VStack(spacing: 0) {
                 Spacer()
-                    .frame(height: verticalPadding)
+                    .frame(height: padding)
                 
                 content
                 
                 Spacer()
-                    .frame(height: verticalPadding)
+                    .frame(height: padding)
             }
-            .frame(height: buttonHeight + verticalPadding * 2) // Total height: button + padding top + padding bottom
-            .frame(maxWidth: .infinity)
+            .frame(width: buttonWidth + padding * 2) // Container width: button + padding on each side
+            .frame(height: containerHeight) // Container height: button + padding top + bottom
             .glassEffect(.regular.interactive(), in: .rect(cornerRadius: cornerRadius))
             .shadow(
                 color: Color.black.opacity(0.1),
@@ -43,7 +49,6 @@ struct MicrophoneButtonContainer<Content: View>: View {
             )
             
             Spacer()
-                .frame(width: horizontalPadding)
         }
     }
 }
@@ -67,7 +72,6 @@ struct MicrophoneButtonContainer<Content: View>: View {
                                 .font(.system(size: 32, weight: .semibold))
                                 .foregroundStyle(ColorPalette.Text.inverted)
                         }
-                        .frame(maxWidth: .infinity)
                 }
             }
         }
