@@ -238,12 +238,14 @@ struct NDayScheduleView: View {
         
         let title = segment.event.event.title?.isEmpty == false ? segment.event.event.title! : "Untitled Event"
         
+        let calendarColor = segment.event.event.calendarColor.flatMap { Color.fromHex($0) }
         let actualCardWidth = cardWidth - horizontalEventInset
         
         return ScheduleEventCard(
             title: title,
             cornerRadius: cornerRadius,
-            style: style
+            style: style,
+            calendarColor: calendarColor
         )
         .frame(width: actualCardWidth, height: 20, alignment: .top)
         .offset(x: centerX - actualCardWidth / 2, y: 0)
@@ -361,10 +363,13 @@ struct NDayScheduleView: View {
                         let topPosition = timelineTopInset + hourHeight * CGFloat(layout.startHour)
                         let centerY = topPosition + eventHeight / 2
 
+                        let calendarColor = segment.event.event.calendarColor.flatMap { Color.fromHex($0) }
+
                         ScheduleEventCard(
                             title: layout.title,
                             cornerRadius: cornerRadius,
-                            style: layout.style
+                            style: layout.style,
+                            calendarColor: calendarColor
                         )
                         .frame(width: eventWidth, height: eventHeight, alignment: .top)
                         .position(x: centerX, y: centerY)

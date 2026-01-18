@@ -221,8 +221,9 @@ Example: "Can you remove my haircut this weekend?" → search_events("haircut", 
 6. UNSUPPORTED REQUEST
 Query intent: Request is not a calendar operation or is unclear
 Pattern: do_nothing(reason)
-Example: "Can you book a haircut for me?" → do_nothing("Unsupported request: booking requires external service")"""
 
+Example: "Hello, how are you?" → do_nothing("Unsupported request")
+"""
 
 def _build_tool_result_processing_section() -> str:
     """Tool Result Processing - How to extract and use data from tool responses"""
@@ -280,22 +281,19 @@ def _build_examples_section() -> str:
    → read_schedule(start_time: Thursday 12:00 AM, end_time: Thursday 11:59 PM)
    → request_update_event(event_id: found_event_id, calendar_id: found_calendar_id, start_time: new_thursday_time, end_time: new_thursday_time + duration)
 
-6. "Can you book a haircut for me?"
-   → do_nothing(reason: "Unsupported request: booking requires external service")
-
-7. "Show me my schedule on Friday"
+6. "Show me my schedule on Friday"
    → show_schedule(start_time: Friday 12:00 AM, end_time: Friday 11:59 PM)
    Note: If today is before Friday, use this week's Friday; if today is Friday or after, use next week's Friday
 
-8. "What's on my calendar next Thursday?"
+7. "What's on my calendar next Thursday?"
    → show_schedule(start_time: next Thursday 12:00 AM, end_time: next Thursday 11:59 PM)
    Note: "next Thursday" means Thursday of next week (after this weekend)
 
-9. "Show me this weekend"
+8. "Show me this weekend"
    → show_schedule(start_time: Saturday 00:00:00, end_time: Sunday 23:59:59)
    CRITICAL: Weekend means Saturday-Sunday ONLY. Find the next Saturday from today, then use that Saturday and the following Sunday. Verify the dates are Saturday-Sunday before calling the tool.
 
-10. "What's on my calendar next weekend?"
+9. "What's on my calendar next weekend?"
    → show_schedule(start_time: next weekend Saturday 00:00:00, end_time: next weekend Sunday 23:59:59)
    CRITICAL: Weekend means Saturday-Sunday ONLY. Calculate this weekend first, then add 7 days to get next weekend's Saturday. Verify the dates are Saturday-Sunday before calling the tool."""
 

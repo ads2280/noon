@@ -79,6 +79,8 @@ final class GoogleCalendarScheduleService: GoogleCalendarScheduleServicing {
                 let decodeStart = Date()
                 let decoder = JSONDecoder()
                 decoder.dateDecodingStrategy = .iso8601
+                // Note: Not using convertFromSnakeCase because Window and CalendarEvent use explicit CodingKeys mappings
+                
                 let schedule = try decoder.decode(GoogleCalendarSchedule.self, from: data)
                 let decodeDuration = Date().timeIntervalSince(decodeStart)
                 await TimingLogger.shared.logStep("frontend.google_calendar_service.fetch_schedule.decode", duration: decodeDuration, details: "event_count=\(schedule.events.count)")

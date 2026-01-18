@@ -20,6 +20,14 @@ struct ScheduleEventCard: View {
     let title: String
     let cornerRadius: CGFloat
     let style: Style
+    let calendarColor: Color?
+    
+    init(title: String, cornerRadius: CGFloat, style: Style, calendarColor: Color? = nil) {
+        self.title = title
+        self.cornerRadius = cornerRadius
+        self.style = style
+        self.calendarColor = calendarColor
+    }
     
     // Text rendering thresholds (based on caption font line height ~17px)
     private static let multilineThreshold: CGFloat = 38   // >= 38px: multiline, < 38px: single line
@@ -41,29 +49,43 @@ struct ScheduleEventCard: View {
     private static let horizontalPaddingValue: CGFloat = 8
 
     private var backgroundStyle: AnyShapeStyle {
-        switch style {
-        case .standard:
-            return AnyShapeStyle(ColorPalette.Surface.overlay)
-        case .highlight, .update:
-            return AnyShapeStyle(
-                ColorPalette.Semantic.highlightBackground
-            )
-        case .new:
+        // For new style, always use white/system background
+        if style == .new {
             return AnyShapeStyle(Color.white)
-        case .destructive:
+        }
+        
+        // If calendar color is provided, use it with appropriate opacity
+        // Make highlight/update styles lighter (lower opacity)
+        // Make destructive style darker (higher opacity)
+        if let calendarColor = calendarColor {
+            let opacity: CGFloat
+            if style == .highlight || style == .update {
+                opacity = 0.12
+            } else if style == .destructive {
+                opacity = 0.3  // Darker for destructive style
+            } else {
+                opacity = 0.2
+            }
+            return AnyShapeStyle(calendarColor.opacity(opacity))
+        }
+        
+        // For destructive style without calendar color, use darker muted color
+        if style == .destructive {
             return AnyShapeStyle(ColorPalette.Surface.destructiveMuted)
         }
+        
+        // Otherwise, use the gray overlay color (default for regular cards)
+        return AnyShapeStyle(ColorPalette.Surface.overlay)
     }
 
     private var shadowColor: Color {
-        switch style {
-        case .standard:
-            return Color.black.opacity(0.15)
-        case .highlight, .update, .new:
-            return ColorPalette.Semantic.primary.opacity(0.25)
-        case .destructive:
-            return Color.black.opacity(0.18)
+        // If calendar color is provided, use it for shadow
+        if let calendarColor = calendarColor {
+            return calendarColor.opacity(0.25)
         }
+        
+        // Otherwise, use subtle black shadow (same as default standard cards)
+        return Color.black.opacity(0.15)
     }
 
     var body: some View {
@@ -83,7 +105,6 @@ struct ScheduleEventCard: View {
                     Text(title)
                         .font(.caption.weight(.semibold))
                         .foregroundStyle(textColor)
-                        .strikethrough(style == .destructive, color: strikeColor)
                         .lineLimit(metrics.maxLines)
                         .minimumScaleFactor(metrics.maxLines == 1 ? metrics.fontScale : 1.0)
                         .fixedSize(horizontal: false, vertical: metrics.maxLines != 1)
@@ -95,7 +116,9 @@ struct ScheduleEventCard: View {
                 }
                 .clipShape(shape)
             }
+            .overlay { glowOverlay }
             .overlay { borderOverlay }
+            .overlay { crosshatchOverlay }
             .shadow(
                 color: shadowConfiguration.color,
                 radius: shadowConfiguration.radius,
@@ -105,8 +128,11 @@ struct ScheduleEventCard: View {
     }
 
     private var shadowAttributes: (color: Color, radius: CGFloat, x: CGFloat, y: CGFloat) {
-        guard style != .standard else { return (.clear, 0, 0, 0) }
-        return (shadowColor, 14, 0, 10)
+        // Always use shadow with the appropriate color (calendar color or default black)
+        // Standard style cards still get a shadow, just more subtle
+        let radius: CGFloat = style == .standard ? 8 : 14
+        let y: CGFloat = style == .standard ? 5 : 10
+        return (shadowColor, radius, 0, y)
     }
 }
 
@@ -150,17 +176,109 @@ private extension ScheduleEventCard {
     @ViewBuilder
     var borderOverlay: some View {
         let shape = RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
+        // Use muted destructive color for destructive style, otherwise use calendar color
+        let borderColor: Color = style == .destructive
+            ? ColorPalette.Surface.destructiveMuted
+            : (calendarColor ?? ColorPalette.Text.secondary.opacity(0.45))
+        
+        // Use dashed border for update/new styles, solid for others
         switch style {
-        case .standard:
-            shape.stroke(ColorPalette.Text.secondary.opacity(0.45), lineWidth: 1)
-        case .highlight:
-            shape.stroke(ColorPalette.Gradients.highlightBorder, lineWidth: 1)
         case .update, .new:
             shape
                 .strokeBorder(style: StrokeStyle(lineWidth: 1, dash: [6, 4]))
-                .foregroundStyle(ColorPalette.Gradients.highlightBorder)
-        case .destructive:
-            shape.stroke(ColorPalette.Text.secondary.opacity(0.6), lineWidth: 1)
+                .foregroundStyle(borderColor)
+        default:
+            shape.stroke(borderColor, lineWidth: 1)
+        }
+    }
+    
+    @ViewBuilder
+    var glowOverlay: some View {
+        // Add glow effect for highlight and update styles
+        if (style == .highlight || style == .update), let calendarColor = calendarColor {
+            let shape = RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
+            // Create an outer glow effect using a blurred stroke
+            shape
+                .stroke(calendarColor.opacity(0.5), lineWidth: 3)
+                .blur(radius: 6)
+        }
+    }
+    
+    @ViewBuilder
+    var crosshatchOverlay: some View {
+        // Add diagonal lines pattern for destructive style
+        if style == .destructive {
+            let shape = RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
+            // Use muted destructive color for crosshatch
+            let crosshatchColor = ColorPalette.Surface.destructiveMuted
+            
+            GeometryReader { geometry in
+                let size = geometry.size
+                let lineSpacing: CGFloat = 4
+                let lineWidth: CGFloat = 1
+                // Lines at 45 degrees: slope = 1 (going from bottom-left to top-right)
+                // In screen coordinates, this means: y = -x + c (since y increases downward)
+                // Or equivalently: y = height - x + intercept (where intercept is at x=0)
+                
+                Canvas { context, canvasSize in
+                    // Draw evenly spaced parallel lines at 45 degrees
+                    // Line equation: y = -x + intercept (in screen coords, so -x for 45° up-right)
+                    // We'll iterate through intercept values
+                    let maxDimension = max(size.width, size.height)
+                    var intercept: CGFloat = -maxDimension
+                    while intercept < size.width + size.height {
+                        var path = Path()
+                        
+                        var startPoint: CGPoint?
+                        var endPoint: CGPoint?
+                        
+                        // Line equation: y = -x + intercept (45 degrees, bottom-left to top-right)
+                        // Convert to screen coords: y = size.height - x + intercept
+                        // Actually, let's use: y = intercept - x (offset to screen coords later)
+                        
+                        // Check intersections with card edges
+                        // Intersection with left edge (x = 0): y = intercept
+                        if intercept >= 0 && intercept <= size.height {
+                            startPoint = CGPoint(x: 0, y: intercept)
+                        }
+                        
+                        // Intersection with bottom edge (y = size.height): x = intercept - size.height
+                        let xAtBottom = intercept - size.height
+                        if xAtBottom >= 0 && xAtBottom <= size.width {
+                            if startPoint == nil {
+                                startPoint = CGPoint(x: xAtBottom, y: size.height)
+                            } else {
+                                endPoint = CGPoint(x: xAtBottom, y: size.height)
+                            }
+                        }
+                        
+                        // Intersection with right edge (x = size.width): y = intercept - size.width
+                        let yAtRight = intercept - size.width
+                        if yAtRight >= 0 && yAtRight <= size.height {
+                            if endPoint == nil {
+                                endPoint = CGPoint(x: size.width, y: yAtRight)
+                            }
+                        }
+                        
+                        // Intersection with top edge (y = 0): x = intercept
+                        if intercept >= 0 && intercept <= size.width {
+                            if endPoint == nil {
+                                endPoint = CGPoint(x: intercept, y: 0)
+                            }
+                        }
+                        
+                        // Draw the line if we have both endpoints
+                        if let start = startPoint, let end = endPoint {
+                            path.move(to: start)
+                            path.addLine(to: end)
+                            context.stroke(path, with: .color(crosshatchColor), lineWidth: lineWidth)
+                        }
+                        
+                        intercept += lineSpacing
+                    }
+                }
+            }
+            .clipShape(shape)
         }
     }
 

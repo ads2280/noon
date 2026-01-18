@@ -19,6 +19,7 @@ struct CalendarEvent: Identifiable, Codable, Hashable, Sendable {
     let attendees: [Attendee]
     let createdBy: Person?
     let calendarId: String?
+    let calendarColor: String?
     let location: String?
     let conference: ConferenceInfo?
 
@@ -31,10 +32,11 @@ struct CalendarEvent: Identifiable, Codable, Hashable, Sendable {
         case attendees
         case creator
         case organizer
-        case calendarId
+        case calendarId = "calendar_id"
+        case calendarColor = "calendar_color"
         case location
-        case conferenceData
-        case hangoutLink
+        case conferenceData = "conference_data"
+        case hangoutLink = "hangout_link"
     }
 
     init(id: String,
@@ -45,6 +47,7 @@ struct CalendarEvent: Identifiable, Codable, Hashable, Sendable {
          attendees: [Attendee] = [],
          createdBy: Person? = nil,
          calendarId: String? = nil,
+         calendarColor: String? = nil,
          location: String? = nil,
          conference: ConferenceInfo? = nil) {
         self.id = id
@@ -55,6 +58,7 @@ struct CalendarEvent: Identifiable, Codable, Hashable, Sendable {
         self.attendees = attendees
         self.createdBy = createdBy
         self.calendarId = calendarId
+        self.calendarColor = calendarColor
         self.location = location
         self.conference = conference
     }
@@ -73,6 +77,7 @@ struct CalendarEvent: Identifiable, Codable, Hashable, Sendable {
         self.createdBy = creator ?? organizer
 
         self.calendarId = try container.decodeIfPresent(String.self, forKey: .calendarId)
+        self.calendarColor = try container.decodeIfPresent(String.self, forKey: .calendarColor)
         self.location = try container.decodeIfPresent(String.self, forKey: .location)
 
         let hangoutLink = CalendarEvent.decodeURL(from: container, forKey: .hangoutLink)
@@ -97,6 +102,7 @@ struct CalendarEvent: Identifiable, Codable, Hashable, Sendable {
         }
 
         try container.encodeIfPresent(calendarId, forKey: .calendarId)
+        try container.encodeIfPresent(calendarColor, forKey: .calendarColor)
         try container.encodeIfPresent(location, forKey: .location)
 
         if let conference {
