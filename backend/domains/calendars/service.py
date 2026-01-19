@@ -1206,6 +1206,8 @@ def _build_event_payload(
         "html_link": event.get("htmlLink"),
         "hangout_link": event.get("hangoutLink"),
         "updated": event.get("updated"),
+        "location": event.get("location"),
+        "attendees": event.get("attendees", []),
         "account_id": context.id,
         "account_email": context.email,
         "calendar_id": calendar_id,

@@ -41,12 +41,21 @@ struct AgentModal: View {
                 }
                 .frame(height: fixedHeight)
                 .frame(maxWidth: .infinity)
+                .contentShape(Rectangle()) // Ensure entire modal area captures taps
                 .glassEffect(.regular.interactive(), in: .rect(cornerRadius: cornerRadius))
                 .shadow(
                     color: Color.black.opacity(0.1),
                     radius: 12,
                     x: 0,
                     y: 4
+                )
+                .simultaneousGesture(
+                    // Capture taps on modal to prevent them from reaching background tap gesture
+                    // Buttons inside will still work because they have their own gesture handlers with higher priority
+                    DragGesture(minimumDistance: 0)
+                        .onEnded { _ in
+                            // Consume taps on modal - buttons inside will still work due to their own gestures
+                        }
                 )
                 
                 Spacer()

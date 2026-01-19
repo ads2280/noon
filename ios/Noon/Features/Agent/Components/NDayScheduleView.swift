@@ -16,6 +16,8 @@ struct NDayScheduleView: View {
     let focusEvent: ScheduleFocusEvent?
     let userTimezone: String?
     let modalBottomPadding: CGFloat
+    @Binding var selectedEvent: CalendarEvent?
+    let onBackgroundTap: (() -> Void)?
 
     private let hours = Array(0..<24)
     
@@ -38,7 +40,9 @@ struct NDayScheduleView: View {
         events: [DisplayEvent],
         focusEvent: ScheduleFocusEvent? = nil,
         userTimezone: String? = nil,
-        modalBottomPadding: CGFloat = 0
+        modalBottomPadding: CGFloat = 0,
+        selectedEvent: Binding<CalendarEvent?> = .constant(nil),
+        onBackgroundTap: (() -> Void)? = nil
     ) {
         self.startDate = calendar.startOfDay(for: startDate)
         self.numberOfDays = max(1, numberOfDays)
@@ -46,6 +50,8 @@ struct NDayScheduleView: View {
         self.focusEvent = focusEvent
         self.userTimezone = userTimezone
         self.modalBottomPadding = modalBottomPadding
+        self._selectedEvent = selectedEvent
+        self.onBackgroundTap = onBackgroundTap
     }
 
     var body: some View {
@@ -252,6 +258,9 @@ struct NDayScheduleView: View {
         )
         .frame(width: actualCardWidth, height: 20, alignment: .top)
         .offset(x: centerX - actualCardWidth / 2, y: 0)
+        .onTapGesture {
+            selectedEvent = segment.event.event
+        }
     }
     
     @ViewBuilder
@@ -451,6 +460,16 @@ struct NDayScheduleView: View {
                 }
                 .scrollBounceBehavior(.basedOnSize)
                 .clipped()
+                .simultaneousGesture(
+                    // Add tap gesture at ScrollView level - only fires for taps, not scrolls
+                    onBackgroundTap != nil ? DragGesture(minimumDistance: 0)
+                        .onEnded { value in
+                            let distance = sqrt(pow(value.translation.width, 2) + pow(value.translation.height, 2))
+                            if distance < 10 {
+                                onBackgroundTap?()
+                            }
+                        } : nil
+                )
                 .onAppear {
                     scrollViewProxy = proxy
                         // Delay scroll until layout is ready - use Task to wait for next frame
@@ -485,6 +504,16 @@ struct NDayScheduleView: View {
                     content
                 }
                 .clipped()
+                .simultaneousGesture(
+                    // Add tap gesture at ScrollView level - only fires for taps, not scrolls
+                    onBackgroundTap != nil ? DragGesture(minimumDistance: 0)
+                        .onEnded { value in
+                            let distance = sqrt(pow(value.translation.width, 2) + pow(value.translation.height, 2))
+                            if distance < 10 {
+                                onBackgroundTap?()
+                            }
+                        } : nil
+                )
                 .onAppear {
                     scrollViewProxy = proxy
                         // Delay scroll until layout is ready - use Task to wait for next frame
@@ -999,6 +1028,9 @@ private extension NDayScheduleView {
             )
             .frame(width: eventWidth, height: eventHeight, alignment: .top)
             .position(x: centerX, y: centerY)
+            .onTapGesture {
+                selectedEvent = segment.event.event
+            }
         }
     }
     

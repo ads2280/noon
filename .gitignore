@@ -15,6 +15,7 @@ xcuserdata/
 
 .DS_Store
 .langgraph_api/
+.cursor/
 
 # Timing logs (performance debugging)
 agent_timing.log

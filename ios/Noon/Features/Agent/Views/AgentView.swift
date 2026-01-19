@@ -11,6 +11,8 @@ import UIKit
 struct AgentView: View {
     @StateObject private var viewModel = AgentViewModel()
     @State private var isPressingMic = false
+    @State private var selectedEventForDetails: CalendarEvent?
+    @State private var isLoadingEventDetails = false
 
     @EnvironmentObject private var authViewModel: AuthViewModel
     @State private var isLoading = false
@@ -28,12 +30,39 @@ struct AgentView: View {
                     events: viewModel.displayEvents,
                     focusEvent: viewModel.focusEvent,
                     userTimezone: viewModel.userTimezone,
-                    modalBottomPadding: scheduleModalPadding
+                    modalBottomPadding: scheduleModalPadding,
+                    selectedEvent: $selectedEventForDetails,
+                    onBackgroundTap: selectedEventForDetails != nil ? {
+                        selectedEventForDetails = nil
+                    } : nil
                 )
                 .padding(.horizontal, 4)
                 .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
                 .ignoresSafeArea(edges: .bottom) // Extend schedule to bottom of screen
                 .transition(.opacity.combined(with: .move(edge: .top)))
+            }
+        }
+        .overlay(alignment: .top) {
+            if let event = selectedEventForDetails {
+                EventDetailsModal(event: event)
+                    .padding(.top, 8)
+                    .transition(.opacity.combined(with: .move(edge: .top)))
+            }
+        }
+        .onChange(of: selectedEventForDetails) { oldValue, newValue in
+            // When an event is selected, fetch full event details to ensure we have attendees, location, etc.
+            if let event = newValue, event.calendarId != nil {
+                Task {
+                    await fetchFullEventDetails(event: event)
+                }
+            }
+        }
+        .onChange(of: viewModel.displayEvents) { oldValue, newValue in
+            // Clear EventDetailsModal when schedule reloads with new events
+            // This ensures the modal doesn't show stale event data
+            // Only clear if we have a selected event and the events actually changed
+            if selectedEventForDetails != nil && oldValue != newValue {
+                selectedEventForDetails = nil
             }
         }
         .safeAreaInset(edge: .bottom, spacing: 0) {
@@ -52,8 +81,21 @@ struct AgentView: View {
             }
         }
         .animation(.spring(response: 0.3, dampingFraction: 0.8), value: agentModalState != nil)
+        .animation(.spring(response: 0.3, dampingFraction: 0.8), value: selectedEventForDetails != nil)
         .onReceive(viewModel.$displayState) { state in
             handleDisplayStateChange(state)
+            
+            // Clear EventDetailsModal when agent responses are handled (except no-action and error)
+            if case .completed(let result) = state {
+                switch result.agentResponse {
+                case .noAction, .error:
+                    // Don't clear modal for no-action or error responses
+                    break
+                case .showEvent, .showSchedule, .createEvent, .updateEvent, .deleteEvent:
+                    // Clear modal for all action responses
+                    selectedEventForDetails = nil
+                }
+            }
         }
         .task {
             if didConfigureViewModel == false {
@@ -200,6 +242,32 @@ struct AgentView: View {
             isLoading = false
         case .idle:
             isLoading = false
+        }
+    }
+    
+    private func fetchFullEventDetails(event: CalendarEvent) async {
+        guard let calendarId = event.calendarId,
+              let accessToken = authViewModel.session?.accessToken else {
+            return
+        }
+        
+        isLoadingEventDetails = true
+        defer { isLoadingEventDetails = false }
+        
+        do {
+            let calendarService = CalendarService()
+            let fullEvent = try await calendarService.fetchEvent(
+                accessToken: accessToken,
+                calendarId: calendarId,
+                eventId: event.id
+            )
+            
+            await MainActor.run {
+                selectedEventForDetails = fullEvent
+            }
+        } catch {
+            // If fetch fails, keep showing the event we have (even if incomplete)
+            print("Failed to fetch full event details: \(error)")
         }
     }
 }
