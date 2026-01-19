@@ -11,6 +11,7 @@ struct ContentView: View {
     @StateObject private var viewModel = AuthViewModel()
     @FocusState private var focusedField: Field?
     @State private var navigationPath = NavigationPath()
+    @State private var showFriendsComingSoonAlert = false
 
     enum Field {
         case phone, code
@@ -52,7 +53,7 @@ struct ContentView: View {
                                 navigationPath.append(Destination.calendars)
                             }
                             Button("Friends") {
-                                // Coming soon
+                                showFriendsComingSoonAlert = true
                             }
                             Divider()
                             Button(role: .destructive) {
@@ -112,6 +113,11 @@ struct ContentView: View {
                 }
             } message: {
                 Text(viewModel.errorMessage ?? "")
+            }
+            .alert("Coming Soon", isPresented: $showFriendsComingSoonAlert) {
+                Button("OK", role: .cancel) { }
+            } message: {
+                Text("This feature is not yet implemented.")
             }
         }
         .environmentObject(viewModel)
