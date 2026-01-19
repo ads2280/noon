@@ -294,8 +294,10 @@ enum GoogleCalendarScheduleServiceError: LocalizedError {
 
 struct CreateEventRequest: Encodable {
     let summary: String
-    let start: Date
-    let end: Date
+    let start: Date?
+    let end: Date?
+    let startDate: String?
+    let endDate: String?
     let calendarId: String
     let description: String?
     let location: String?
@@ -305,10 +307,44 @@ struct CreateEventRequest: Encodable {
         case summary
         case start
         case end
+        case startDate = "start_date"
+        case endDate = "end_date"
         case calendarId = "calendar_id"
         case description
         case location
         case timezone
+    }
+    
+    func encode(to encoder: Encoder) throws {
+        var container = encoder.container(keyedBy: CodingKeys.self)
+        
+        try container.encode(summary, forKey: .summary)
+        try container.encode(calendarId, forKey: .calendarId)
+        try container.encode(timezone, forKey: .timezone)
+        
+        // Encode datetime fields (for timed events)
+        if let start = start {
+            try container.encode(start, forKey: .start)
+        }
+        if let end = end {
+            try container.encode(end, forKey: .end)
+        }
+        
+        // Encode date fields (for all-day events)
+        if let startDate = startDate {
+            try container.encode(startDate, forKey: .startDate)
+        }
+        if let endDate = endDate {
+            try container.encode(endDate, forKey: .endDate)
+        }
+        
+        // Encode optional fields
+        if let description = description {
+            try container.encode(description, forKey: .description)
+        }
+        if let location = location {
+            try container.encode(location, forKey: .location)
+        }
     }
 }
 
@@ -320,6 +356,8 @@ struct UpdateEventRequest: Encodable {
     let summary: String?
     let start: Date?
     let end: Date?
+    let startDate: String?
+    let endDate: String?
     let calendarId: String
     let description: String?
     let location: String?
@@ -329,6 +367,8 @@ struct UpdateEventRequest: Encodable {
         case summary
         case start
         case end
+        case startDate = "start_date"
+        case endDate = "end_date"
         case calendarId = "calendar_id"
         case description
         case location
@@ -347,6 +387,12 @@ struct UpdateEventRequest: Encodable {
         }
         if let end = end {
             try container.encode(end, forKey: .end)
+        }
+        if let startDate = startDate {
+            try container.encode(startDate, forKey: .startDate)
+        }
+        if let endDate = endDate {
+            try container.encode(endDate, forKey: .endDate)
         }
         // Always encode required fields
         try container.encode(calendarId, forKey: .calendarId)

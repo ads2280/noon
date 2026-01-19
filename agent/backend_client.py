@@ -252,6 +252,16 @@ class BackendClient(CalendarClient):
                 
             return event
             
+        except ValueError as e:
+            # Check if this is a 404 error from _make_request
+            error_str = str(e).lower()
+            if "404" in error_str or "not found" in error_str:
+                error_msg = f"Event {event_id} not found in calendar {calendar_id}."
+                logger.warning(f"Event not found: {error_msg}")
+                raise ValueError(error_msg) from e
+            else:
+                logger.error(f"Failed to read event: {str(e)}", exc_info=True)
+                raise
         except Exception as e:
             logger.error(f"Failed to read event: {str(e)}", exc_info=True)
             raise ValueError(f"Failed to read event: {str(e)}") from e
