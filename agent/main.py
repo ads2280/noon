@@ -74,8 +74,9 @@ INTERNAL TOOLS (information gathering - do NOT terminate):
 EXTERNAL TOOLS (complete request - DO terminate):
 - Complete the user's request, responding directly to user
 - Agent terminates after external tool execution (unless there is a validation error)
+- ⚠️ CRITICAL: You can ONLY call ONE external tool per turn. If multiple events match, pick the ONE that best matches the user's description and call only that tool.
 
-You MUST ALWAYS end with an external tool call."""
+You MUST ALWAYS end with exactly ONE external tool call."""
 
 
 def _build_time_date_handling_section(
@@ -123,8 +124,8 @@ INTERNAL TOOLS (for gathering information - do NOT terminate):
 EXTERNAL TOOLS (terminate agent and show results to user):
 - show_schedule(start_time, end_time): Display schedule to user
 - show_event(event_id, calendar_id): Display specific event to user
-- request_create_event(summary, start_time, end_time, calendar_id, description=None, location=None): Request to create event. Only include description/location if explicitly requested or necessary.
-- request_update_event(event_id, calendar_id, summary=None, start_time=None, end_time=None, description=None, location=None): Request to update event. Only include fields that need updating. Only include description if explicitly requested.
+- request_create_event(summary, calendar_id, start_time=None, end_time=None, start_date=None, end_date=None, description=None, location=None): Request to create event. Use start_time/end_time for timed events, or start_date/end_date for all-day events (e.g., birthdays, holidays). Only include description/location if explicitly requested or necessary.
+- request_update_event(event_id, calendar_id, summary=None, start_time=None, end_time=None, start_date=None, end_date=None, description=None, location=None): Request to update event. Use start_time/end_time for timed events, or start_date/end_date for all-day events. Only include fields that need updating. Only include description if explicitly requested.
 - request_delete_event(event_id, calendar_id): Request to delete event
 - do_nothing(reason): Handle unsupported/unclear requests
 
@@ -171,9 +172,9 @@ FALLBACK STRATEGIES IF INITIAL SEARCH RETURNS NO RESULTS:
   * → Try search_events("jude", ...) or expand date range
   * → If still no results and date is known: read_schedule(...) → manually find event with "andrew" or "jude" in summary
 
-MANDATORY: After search_events returns results, you MUST extract the event_id and calendar_id from the first matching event in the results list, then immediately call show_event with those values.
+MANDATORY: After search_events returns results, you MUST extract the event_id and calendar_id from the matching event in the results list, then immediately call show_event with those values.
 Optional: If you need full event details, call read_event(event_id, calendar_id) before show_event
-Example: "When is my haircut this weekend?" → search_events("haircut", Saturday 12:00 AM, Sunday 11:59 PM) → extract event_id and calendar_id from first result → show_event(event_id, calendar_id)
+Example: "When is my haircut this weekend?" → search_events("haircut", Saturday 12:00 AM, Sunday 11:59 PM) → extract event_id and calendar_id from matching result → show_event(event_id, calendar_id)
 Example: "When is my first event tomorrow?" → read_schedule(tomorrow 12:00 AM, tomorrow 11:59 PM) → identify first event by start time → extract event_id and calendar_id → show_event(event_id, calendar_id)
 
 3. CREATE EVENT
@@ -183,6 +184,8 @@ Pattern: list_calendars() → read_schedule(start_time, end_time) → request_cr
 Calendar selection: MUST call list_calendars() FIRST to get calendars with write permissions, then use calendar_id from that result. Prefer primary calendar (is_primary: true) if available.
 
 Optional: If checking for conflicts with existing events, call search_events first
+
+All-day events: For events that should span the entire day (birthdays, vacations, etc.), use start_date and end_date parameters instead of start_time and end_time. The end_date should be the day after the event ends (exclusive). That is, for a single-day all-day event on February 2, use start_date="2026-02-02" and end_date="2026-02-03".
 
 Description parameter rules: Only include description parameter if:
 - The user explicitly mentions wanting a description (e.g., "with a note about...", "with description...")
@@ -196,10 +199,12 @@ Example: "Schedule a team meeting next Tuesday with description 'Discuss Q1 goal
 Query intent: User wants to modify an existing event
 Pattern: search_events(keywords, start_time, end_time) → EXTRACT event_id and calendar_id from results → request_update_event(event_id, calendar_id, new_details)
 
-MANDATORY: After search_events returns results, you MUST extract the event_id and calendar_id from the first matching event, then call request_update_event with those values.
+MANDATORY: After search_events returns results, you MUST extract the event_id and calendar_id from the matching event, then call request_update_event with those values.
 Optional: If checking availability at new time, call read_schedule(new_time_window) before request_update_event
 
 Calendar selection: Cannot change the calendar_id for an existing event, but must verify write access exists.
+
+All-day events: When updating all-day events, remember that end_date values you read for all day eventsare already exclusive (they represent the day after the event ends). So, if you are not wanting to change the end date, you do not need to include it in the request_update_event call. And if you do want to change it, just account for the fact that it was already the exclusive end, one day after the true last day of the event.
 
 Description parameter rules: Only include description parameter if:
 - The user explicitly mentions updating or adding a description
@@ -212,7 +217,7 @@ Example: "Can you move my haircut to Thursday next week?" → search_events("hai
 Query intent: User wants to remove/cancel an event
 Pattern: search_events(keywords, start_time, end_time) → EXTRACT event_id and calendar_id from results → request_delete_event(event_id, calendar_id)
 
-MANDATORY: After search_events returns results, you MUST extract the event_id and calendar_id from the first matching event, then immediately call request_delete_event with those values.
+MANDATORY: After search_events returns results, you MUST extract the event_id and calendar_id from the matching event, then immediately call request_delete_event with those values.
 
 Calendar selection: Must use calendar_id from search result (cannot change it).
 
@@ -233,12 +238,11 @@ RESULT FORMAT:
 Tool results are returned as strings containing Python list/dict representations. Parse them to extract the actual event_id and calendar_id values.
 
 EXTRACTION RULES:
-- After search_events returns events: The results are a list of event dictionaries. Extract the 'id' field as event_id and 'calendar_id' field as calendar_id from the FIRST event in the list, then immediately call show_event(event_id, calendar_id) or request_delete_event(event_id, calendar_id) or request_update_event(event_id, calendar_id, ...) depending on the query intent.
-  ⚠️ IMPORTANT: Use calendar_id EXACTLY as it appears in the response - it must include the full format with @ suffix (e.g., "id@group.calendar.google.com"). NEVER truncate or modify it.
+- After search_events returns events: The results are a list of event dictionaries. Extract the 'id' field as event_id and 'calendar_id' field as calendar_id from the matching event, then immediately call show_event(event_id, calendar_id) or request_delete_event(event_id, calendar_id) or request_update_event(event_id, calendar_id, ...) depending on the query intent.
+  ⚠️ IMPORTANT: The event_id and calendar_id must come from the SAME event dictionary. If you get an error that an event is not found, it may mean you mixed event_id and calendar_id from different events - search again and ensure you use the matching pair.
 - After read_schedule returns events: The results are a list of event dictionaries. If the query asks about a specific event (first, last, etc.), identify that event by sorting by start time, extract the 'id' field as event_id and 'calendar_id' field as calendar_id, then call show_event(event_id, calendar_id).
-  ⚠️ IMPORTANT: Use calendar_id EXACTLY as it appears in the response - it must include the full format with @ suffix. NEVER truncate or modify it.
 - After read_event returns event details: Extract the 'id' field as event_id and 'calendar_id' field as calendar_id from the result dictionary, then call show_event(event_id, calendar_id).
-  ⚠️ IMPORTANT: Use calendar_id EXACTLY as it appears in the response - it must include the full format with @ suffix. NEVER truncate or modify it.
+- ⚠️ IMPORTANT: Use calendar_id EXACTLY as it appears in the response - it must include the full format with @ suffix (e.g., "id@group.calendar.google.com"). NEVER truncate or modify it.
 
 MANDATORY FOLLOW-UP:
 - Never stop after an internal tool call - always process the results and call an external tool to complete the query
@@ -295,7 +299,11 @@ def _build_examples_section() -> str:
 
 9. "What's on my calendar next weekend?"
    → show_schedule(start_time: next weekend Saturday 00:00:00, end_time: next weekend Sunday 23:59:59)
-   CRITICAL: Weekend means Saturday-Sunday ONLY. Calculate this weekend first, then add 7 days to get next weekend's Saturday. Verify the dates are Saturday-Sunday before calling the tool."""
+   CRITICAL: Weekend means Saturday-Sunday ONLY. Calculate this weekend first, then add 7 days to get next weekend's Saturday. Verify the dates are Saturday-Sunday before calling the tool.
+
+10. "Put Lola's birthday on my calendar on February 2."
+   → list_calendars() → request_create_event(summary: "Lola's Birthday", start_date: "2026-02-02", end_date: "2026-02-03", calendar_id: selected_from_list_calendars)
+   Note: Birthdays are all-day events - use start_date and end_date (end_date is exclusive, so use the next day for single-day events)."""
 
 
 
@@ -505,6 +513,52 @@ def tool_execution_node(state: State) -> Dict[str, Any]:
             logger.warning("No tool calls to execute")
             return {"terminated": True}
         
+        # ARCHITECTURAL CONSTRAINT: Only ONE external tool call allowed per turn
+        external_tool_calls = [tc for tc in tool_calls if tc.get("name", "") in EXTERNAL_TOOL_NAMES]
+        if len(external_tool_calls) > 1:
+            error_msg = f"ARCHITECTURE VIOLATION: Multiple external tool calls detected ({len(external_tool_calls)}). Only ONE external tool call is allowed per turn. You called: {[tc.get('name') for tc in external_tool_calls]}. Please call only ONE external tool that matches the user's request."
+            logger.error(error_msg)
+            # Return error ToolMessages for all external tool calls
+            tool_messages = []
+            for tc in external_tool_calls:
+                tool_messages.append(
+                    ToolMessage(
+                        content=error_msg,
+                        tool_call_id=tc.get("id", ""),
+                    )
+                )
+            # Also handle any internal tools that were called
+            internal_tool_calls = [tc for tc in tool_calls if tc.get("name", "") not in EXTERNAL_TOOL_NAMES]
+            if internal_tool_calls:
+                # Execute internal tools first, then return the error
+                set_auth_context(auth)
+                for tc in internal_tool_calls:
+                    tool_name = tc.get("name", "")
+                    tool_args = tc.get("args", {})
+                    tool_id = tc.get("id", "")
+                    if tool_name in TOOL_MAP:
+                        try:
+                            tool = TOOL_MAP[tool_name]
+                            result = tool.invoke(tool_args)
+                            tool_messages.append(
+                                ToolMessage(
+                                    content=str(result),
+                                    tool_call_id=tool_id,
+                                )
+                            )
+                        except Exception as e:
+                            tool_messages.append(
+                                ToolMessage(
+                                    content=f"Error executing {tool_name}: {str(e)}",
+                                    tool_call_id=tool_id,
+                                )
+                            )
+            return {
+                "messages": messages + tool_messages,
+                "tool_results": {},
+                "terminated": False,  # Continue agent loop so it can retry with single external tool
+            }
+        
         # Set auth context for tools to access
         set_auth_context(auth)
         
@@ -546,7 +600,14 @@ def tool_execution_node(state: State) -> Dict[str, Any]:
                     external_tool_result = result
                     logger.info(f"External tool {tool_name} executed, result: {result}")
                     logger.info(f"External tool result type field: {result.get('type', 'MISSING')}")
-                    # Don't add to messages, we'll handle it in format_response
+                    # Add ToolMessage for external tools too - required by OpenAI API
+                    # Every tool_call_id must have a ToolMessage response before next LLM call
+                    tool_messages.append(
+                        ToolMessage(
+                            content=f"Tool executed successfully. Result type: {result.get('type', 'unknown')}",
+                            tool_call_id=tool_id,
+                        )
+                    )
                 else:
                     # Internal tool - add result to messages
                     tool_messages.append(
@@ -643,27 +704,53 @@ def validation_node(state: State) -> Dict[str, Any]:
             
             # Convert validation error to ToolMessage
             # We need to find the last AIMessage with tool_calls to attach this error
-            tool_message = None
+            # Find all tool_call_ids that need responses
+            tool_call_ids_to_replace = []
             for msg in reversed(messages):
                 if hasattr(msg, 'tool_calls') and msg.tool_calls:
-                    # Use the first tool_call_id from the last tool-calling message
-                    tool_call_id = msg.tool_calls[0].get("id", "") if isinstance(msg.tool_calls[0], dict) else getattr(msg.tool_calls[0], "id", "")
-                    if tool_call_id:
-                        tool_message = ToolMessage(
+                    # Extract tool_call_ids from all tool calls
+                    for tool_call in msg.tool_calls:
+                        if isinstance(tool_call, dict):
+                            tool_call_id = tool_call.get("id", "")
+                        else:
+                            tool_call_id = getattr(tool_call, "id", "")
+                        
+                        if tool_call_id:
+                            tool_call_ids_to_replace.append(tool_call_id)
+                    break  # Only process the last AIMessage with tool_calls
+            
+            # Filter out existing ToolMessages for these tool_call_ids (from tool_execution_node)
+            # and add validation error ToolMessages
+            filtered_messages = []
+            for msg in messages:
+                if isinstance(msg, ToolMessage):
+                    # Keep ToolMessages that don't match the tool_call_ids we're replacing
+                    if msg.tool_call_id not in tool_call_ids_to_replace:
+                        filtered_messages.append(msg)
+                else:
+                    filtered_messages.append(msg)
+            
+            # Add validation error ToolMessages for each tool_call_id
+            validation_tool_messages = []
+            if tool_call_ids_to_replace:
+                for tool_call_id in tool_call_ids_to_replace:
+                    validation_tool_messages.append(
+                        ToolMessage(
                             content=validation_error,
                             tool_call_id=tool_call_id,
                         )
-                        break
-            
-            # If we couldn't find a tool_call_id, create a generic ToolMessage
-            if not tool_message:
-                tool_message = ToolMessage(
-                    content=validation_error,
-                    tool_call_id="validation-error",
-                )
+                    )
+            else:
+                # Fallback if we couldn't find tool_call_ids
+                validation_tool_messages = [
+                    ToolMessage(
+                        content=validation_error,
+                        tool_call_id="validation-error",
+                    )
+                ]
             
             # Clear external_tool_result and set terminated to False to continue agent loop
-            new_messages = messages + [tool_message]
+            new_messages = filtered_messages + validation_tool_messages
             node_duration = time.time() - node_start_time
             log_step("validation_node", node_duration, details="FAILED")
             return {

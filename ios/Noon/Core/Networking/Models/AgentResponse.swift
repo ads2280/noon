@@ -503,7 +503,72 @@ struct NoActionMetadata: Codable, Sendable {
 // MARK: - Helpers
 
 struct DateTimeDict: Codable, Sendable {
-    let dateTime: Date  // Decoded from ISO8601 string with .iso8601 decoder strategy
+    let dateTime: Date?  // Decoded from ISO8601 string with .iso8601 decoder strategy (for timed events)
+    let date: String?    // Date string in "YYYY-MM-DD" format (for all-day events)
+    
+    // Computed property to convert date string to Date for convenience
+    var dateAsDate: Date? {
+        guard let dateString = date else { return nil }
+        let formatter = DateFormatter()
+        formatter.dateFormat = "yyyy-MM-dd"
+        formatter.timeZone = TimeZone(secondsFromGMT: 0)
+        formatter.calendar = Calendar(identifier: .gregorian)
+        formatter.locale = Locale(identifier: "en_US_POSIX")
+        return formatter.date(from: dateString)
+    }
+    
+    // Check if this represents an all-day event
+    var isAllDay: Bool {
+        date != nil && dateTime == nil
+    }
+    
+    init(dateTime: Date? = nil, date: String? = nil) {
+        self.dateTime = dateTime
+        self.date = date
+    }
+    
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        
+        // Try to decode dateTime (ISO8601 format)
+        if let dateTimeString = try? container.decode(String.self, forKey: .dateTime) {
+            let formatter = ISO8601DateFormatter()
+            formatter.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
+            self.dateTime = formatter.date(from: dateTimeString) ?? ISO8601DateFormatter().date(from: dateTimeString)
+        } else {
+            self.dateTime = nil
+        }
+        
+        // Try to decode date (YYYY-MM-DD format)
+        self.date = try? container.decode(String.self, forKey: .date)
+        
+        // Validate that at least one field is present
+        if dateTime == nil && date == nil {
+            throw DecodingError.dataCorrupted(
+                DecodingError.Context(
+                    codingPath: decoder.codingPath,
+                    debugDescription: "DateTimeDict must have either dateTime or date field"
+                )
+            )
+        }
+    }
+    
+    func encode(to encoder: Encoder) throws {
+        var container = encoder.container(keyedBy: CodingKeys.self)
+        if let dateTime = dateTime {
+            let formatter = ISO8601DateFormatter()
+            formatter.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
+            try container.encode(formatter.string(from: dateTime), forKey: .dateTime)
+        }
+        if let date = date {
+            try container.encode(date, forKey: .date)
+        }
+    }
+    
+    private enum CodingKeys: String, CodingKey {
+        case dateTime
+        case date
+    }
 }
 
 struct DynamicCodingKey: CodingKey, Hashable {

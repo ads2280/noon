@@ -5,7 +5,7 @@ from __future__ import annotations
 from datetime import date, datetime
 from typing import Any, Dict, List, Optional
 
-from pydantic import BaseModel, Field, HttpUrl
+from pydantic import BaseModel, Field, HttpUrl, model_validator
 
 
 # Google Account schemas
@@ -101,12 +101,26 @@ class ScheduleResponse(BaseModel):
 
 class CreateEventRequest(BaseModel):
     summary: str = Field(..., min_length=1)
-    start: datetime
-    end: datetime
+    start: Optional[datetime] = None
+    end: Optional[datetime] = None
+    start_date: Optional[date] = None
+    end_date: Optional[date] = None
     calendar_id: str = Field(..., min_length=1)
     description: Optional[str] = None
     location: Optional[str] = None
     timezone: str = Field(default="UTC", min_length=1)
+    
+    @model_validator(mode='after')
+    def validate_date_fields(self):
+        """Ensure exactly one of (start, end) or (start_date, end_date) is provided."""
+        has_datetime = self.start is not None and self.end is not None
+        has_date = self.start_date is not None and self.end_date is not None
+        
+        if not has_datetime and not has_date:
+            raise ValueError("Either (start, end) for timed events or (start_date, end_date) for all-day events must be provided")
+        if has_datetime and has_date:
+            raise ValueError("Cannot provide both datetime and date fields. Use datetime for timed events, date for all-day events.")
+        return self
 
 
 class CreateEventResponse(BaseModel):
@@ -117,10 +131,22 @@ class UpdateEventRequest(BaseModel):
     summary: Optional[str] = None
     start: Optional[datetime] = None
     end: Optional[datetime] = None
+    start_date: Optional[date] = None
+    end_date: Optional[date] = None
     calendar_id: str = Field(..., min_length=1)
     description: Optional[str] = None
     location: Optional[str] = None
     timezone: str = Field(default="UTC", min_length=1)
+    
+    @model_validator(mode='after')
+    def validate_date_fields(self):
+        """Ensure datetime and date fields are not mixed."""
+        has_datetime = self.start is not None or self.end is not None
+        has_date = self.start_date is not None or self.end_date is not None
+        
+        if has_datetime and has_date:
+            raise ValueError("Cannot provide both datetime and date fields. Use datetime for timed events, date for all-day events.")
+        return self
 
 
 class UpdateEventResponse(BaseModel):

@@ -1,10 +1,10 @@
 from __future__ import annotations
 
-from datetime import datetime
+from datetime import date as date_type, datetime
 from enum import StrEnum
 from typing import Optional, Union
 
-from pydantic import BaseModel
+from pydantic import BaseModel, Field, field_validator, model_validator, ConfigDict, Discriminator
 
 
 class AgentResponseType(StrEnum):
@@ -17,7 +17,21 @@ class AgentResponseType(StrEnum):
 
 
 class DateTimeDict(BaseModel):
-    dateTime: datetime
+    """Represents either a datetime (for timed events) or a date (for all-day events)."""
+    dateTime: Optional[datetime] = None
+    date: Optional[date_type] = None
+    
+    @model_validator(mode='after')
+    def validate_exactly_one_field(self):
+        """Ensure exactly one of dateTime or date is provided."""
+        has_datetime = self.dateTime is not None
+        has_date = self.date is not None
+        
+        if not has_datetime and not has_date:
+            raise ValueError("Exactly one of 'dateTime' or 'date' must be provided")
+        if has_datetime and has_date:
+            raise ValueError("Cannot provide both 'dateTime' and 'date' - use dateTime for timed events, date for all-day events")
+        return self
 
 
 class ShowEventMetadata(BaseModel):

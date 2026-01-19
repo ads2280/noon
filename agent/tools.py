@@ -2,7 +2,7 @@
 
 import asyncio
 import logging
-from datetime import datetime
+from datetime import date, datetime
 from typing import List, Dict, Any, Optional
 from langchain_core.tools import tool
 from agent.calendar_client import create_calendar_client
@@ -208,12 +208,18 @@ def read_event(event_id: str, calendar_id: str) -> Dict[str, Any]:
             
         return event
     except Exception as e:
-        logger.error(f"Error in read_event: {str(e)}", exc_info=True)
-        # Return minimal event dict on error
+        error_msg = str(e)
+        logger.error(f"Error in read_event: {error_msg}", exc_info=True)
+        # Return actionable error message
+        is_404 = "404" in error_msg.lower() or "not found" in error_msg.lower()
+        if is_404:
+            actionable_error = f"ERROR: Event {event_id} not found in calendar {calendar_id}. This likely means the event_id and calendar_id don't match (they may have come from different events in the search results). You should search_events again and ensure you extract BOTH event_id AND calendar_id from the SAME event that matches the user's description."
+        else:
+            actionable_error = f"ERROR: Failed to read event {event_id} from calendar {calendar_id}: {error_msg}"
         return {
             "id": event_id,
             "calendar_id": calendar_id,
-            "error": str(e),
+            "error": actionable_error,
         }
 
 
@@ -297,9 +303,11 @@ def show_event(event_id: str, calendar_id: str) -> Dict[str, Any]:
 @tool
 def request_create_event(
     summary: str,
-    start_time: str,
-    end_time: str,
     calendar_id: str,
+    start_time: str = None,
+    end_time: str = None,
+    start_date: str = None,
+    end_date: str = None,
     description: str = None,
     location: str = None,
 ) -> Dict[str, Any]:
@@ -313,27 +321,57 @@ def request_create_event(
     
     Args:
         summary: Title/summary of the event
-        start_time: Timezone-aware ISO format datetime string with offset (e.g., "2026-01-14T10:00:00-08:00")
-        end_time: Timezone-aware ISO format datetime string with offset (e.g., "2026-01-14T11:00:00-08:00")
         calendar_id: ID of the calendar to create the event on
+        start_time: Timezone-aware ISO format datetime string with offset (e.g., "2026-01-14T10:00:00-08:00")
+                   Required for timed events. Mutually exclusive with start_date.
+        end_time: Timezone-aware ISO format datetime string with offset (e.g., "2026-01-14T11:00:00-08:00")
+                 Required for timed events. Mutually exclusive with end_date.
+        start_date: Date string in "YYYY-MM-DD" format (e.g., "2026-01-14")
+                   Required for all-day events. Mutually exclusive with start_time.
+        end_date: Date string in "YYYY-MM-DD" format (e.g., "2026-01-15")
+                 Required for all-day events. Mutually exclusive with end_time.
+                 Note: End date is exclusive (represents the day after the event ends).
         description: Optional description of the event. Only include if explicitly requested or necessary.
         location: Optional location for the event
     
     Returns:
         Dict with type "create-event" and metadata
     """
-    # Parse datetime strings to datetime objects
-    start_dt = datetime.fromisoformat(start_time)
-    end_dt = datetime.fromisoformat(end_time)
+    # Validate that either datetime or date is provided (not both, not neither)
+    has_datetime = start_time is not None and end_time is not None
+    has_date = start_date is not None and end_date is not None
     
-    metadata = CreateEventMetadata(
-        summary=summary,
-        start=DateTimeDict(dateTime=start_dt),
-        end=DateTimeDict(dateTime=end_dt),
-        calendar_id=calendar_id,
-        description=description,
-        location=location,
-    )
+    if not has_datetime and not has_date:
+        raise ValueError("Either (start_time, end_time) or (start_date, end_date) must be provided")
+    if has_datetime and has_date:
+        raise ValueError("Cannot provide both datetime and date fields. Use datetime for timed events, date for all-day events.")
+    
+    if has_date:
+        # Parse date strings to date objects for all-day events
+        start_d = date.fromisoformat(start_date)
+        end_d = date.fromisoformat(end_date)
+        
+        metadata = CreateEventMetadata(
+            summary=summary,
+            start=DateTimeDict(date=start_d),
+            end=DateTimeDict(date=end_d),
+            calendar_id=calendar_id,
+            description=description,
+            location=location,
+        )
+    else:
+        # Parse datetime strings to datetime objects for timed events
+        start_dt = datetime.fromisoformat(start_time)
+        end_dt = datetime.fromisoformat(end_time)
+        
+        metadata = CreateEventMetadata(
+            summary=summary,
+            start=DateTimeDict(dateTime=start_dt),
+            end=DateTimeDict(dateTime=end_dt),
+            calendar_id=calendar_id,
+            description=description,
+            location=location,
+        )
     
     response = CreateEventResponse(metadata=metadata)
     return response.model_dump()
@@ -346,6 +384,8 @@ def request_update_event(
     summary: str = None,
     start_time: str = None,
     end_time: str = None,
+    start_date: str = None,
+    end_date: str = None,
     description: str = None,
     location: str = None,
 ) -> Dict[str, Any]:
@@ -362,20 +402,43 @@ def request_update_event(
         calendar_id: The ID of the calendar containing the event
         summary: Optional new summary/title
         start_time: Optional new start time (timezone-aware ISO format datetime string with offset, e.g., "2026-01-14T10:00:00-08:00")
+                   For timed events. Mutually exclusive with start_date.
         end_time: Optional new end time (timezone-aware ISO format datetime string with offset, e.g., "2026-01-14T11:00:00-08:00")
+                 For timed events. Mutually exclusive with end_date.
+        start_date: Optional new start date (date string in "YYYY-MM-DD" format, e.g., "2026-01-14")
+                   For all-day events. Mutually exclusive with start_time.
+        end_date: Optional new end date (date string in "YYYY-MM-DD" format, e.g., "2026-01-15")
+                 For all-day events. Mutually exclusive with end_time.
+                 Note: End date is exclusive (represents the day after the event ends).
         description: Optional new description. Only include if explicitly requested or necessary.
         location: Optional new location
     
     Returns:
         Dict with type "update-event" and metadata
     """
-    # Parse datetime strings to datetime objects if provided
+    # Validate that datetime and date are not mixed
+    has_datetime = start_time is not None or end_time is not None
+    has_date = start_date is not None or end_date is not None
+    
+    if has_datetime and has_date:
+        raise ValueError("Cannot provide both datetime and date fields. Use datetime for timed events, date for all-day events.")
+    
+    # Parse and create DateTimeDict objects
     start_dt = None
     end_dt = None
-    if start_time:
-        start_dt = DateTimeDict(dateTime=datetime.fromisoformat(start_time))
-    if end_time:
-        end_dt = DateTimeDict(dateTime=datetime.fromisoformat(end_time))
+    
+    if has_date:
+        # Handle all-day events
+        if start_date:
+            start_dt = DateTimeDict(date=date.fromisoformat(start_date))
+        if end_date:
+            end_dt = DateTimeDict(date=date.fromisoformat(end_date))
+    elif has_datetime:
+        # Handle timed events
+        if start_time:
+            start_dt = DateTimeDict(dateTime=datetime.fromisoformat(start_time))
+        if end_time:
+            end_dt = DateTimeDict(dateTime=datetime.fromisoformat(end_time))
     
     metadata = UpdateEventMetadata(
         event_id=event_id,
