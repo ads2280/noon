@@ -17,6 +17,7 @@ from domains.calendars.schemas import (
     GoogleAccountCreate,
     GoogleOAuthStartResponse,
     CalendarResponse,
+    CalendarUpdate,
     ScheduleRequest,
     ScheduleResponse,
     CreateEventRequest,
@@ -64,8 +65,8 @@ async def list_accounts(
         accounts = []
         for account_row in account_rows:
             account_id = account_row["id"]
-            # Fetch calendars for this account
-            calendar_rows = repository.get_calendars_by_account(account_id)
+            # Fetch calendars for this account - include hidden calendars so users can toggle visibility
+            calendar_rows = repository.get_calendars_by_account(account_id, include_hidden=True)
             calendars = [CalendarResponse(**cal) for cal in calendar_rows] if calendar_rows else []
             # Create account response with calendars
             account_dict = dict(account_row)
@@ -260,6 +261,28 @@ async def delete_account(
         ) from exc
 
     return Response(status_code=status.HTTP_204_NO_CONTENT)
+
+
+@router.put("/{calendar_id}", response_model=CalendarResponse)
+async def update_calendar(
+    calendar_id: str,
+    payload: CalendarUpdate,
+    current_user: AuthenticatedUser = Depends(get_current_user),
+) -> CalendarResponse:
+    """Update a calendar's properties (e.g., is_hidden)."""
+    repository = CalendarRepository()
+    try:
+        updated = repository.update_calendar(
+            current_user.id,
+            calendar_id,
+            payload.model_dump(exclude_none=True),
+        )
+    except SupabaseStorageError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)
+        ) from exc
+    
+    return CalendarResponse(**updated)
 
 
 # Calendar operations routes

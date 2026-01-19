@@ -15,6 +15,7 @@ protocol CalendarServicing {
     func refreshCalendars(accessToken: String) async throws
     func beginGoogleOAuth(accessToken: String) async throws -> GoogleOAuthStart
     func deleteCalendar(accessToken: String, accountId: String) async throws
+    func updateCalendar(accessToken: String, calendarId: String, isHidden: Bool) async throws -> GoogleCalendar
     func createEvent(accessToken: String, request: CreateEventRequest) async throws -> CalendarCreateEventResponse
     func deleteEvent(accessToken: String, calendarId: String, eventId: String) async throws
     func fetchEvent(accessToken: String, calendarId: String, eventId: String) async throws -> CalendarEvent
@@ -163,6 +164,55 @@ final class CalendarService: CalendarServicing {
                 throw calendarError
             }
             calendarLogger.error("❌ Network error when deleting calendar \(accountId, privacy: .private): \(String(describing: error))")
+            throw CalendarServiceError.network(error)
+        }
+    }
+
+    func updateCalendar(accessToken: String, calendarId: String, isHidden: Bool) async throws -> GoogleCalendar {
+        var urlRequest = try makeRequest(path: "/api/v1/calendars/\(calendarId)", accessToken: accessToken, method: "PUT")
+        
+        // Encode the request body
+        let encoder = JSONEncoder()
+        encoder.keyEncodingStrategy = .convertToSnakeCase
+        let requestBody = ["is_hidden": isHidden]
+        urlRequest.httpBody = try encoder.encode(requestBody)
+        
+        do {
+            let (data, response) = try await urlSession.data(for: urlRequest)
+            guard let httpResponse = response as? HTTPURLResponse else {
+                calendarLogger.error("❌ Non-HTTP response when updating calendar")
+                throw CalendarServiceError.http(-1)
+            }
+
+            guard 200..<300 ~= httpResponse.statusCode else {
+                if httpResponse.statusCode == 401 {
+                    calendarLogger.error("🚫 Unauthorized when updating calendar")
+                    throw CalendarServiceError.unauthorized
+                }
+                if let payload = String(data: data, encoding: .utf8) {
+                    calendarLogger.error("❌ HTTP \(httpResponse.statusCode) when updating calendar: \(payload, privacy: .private)")
+                } else {
+                    calendarLogger.error("❌ HTTP \(httpResponse.statusCode) when updating calendar with empty body")
+                }
+                throw CalendarServiceError.http(httpResponse.statusCode)
+            }
+
+            do {
+                let decoder = JSONDecoder()
+                decoder.keyDecodingStrategy = .convertFromSnakeCase
+                decoder.dateDecodingStrategy = .iso8601
+                let calendar = try decoder.decode(GoogleCalendar.self, from: data)
+                calendarLogger.debug("✅ Updated calendar: \(calendarId, privacy: .public) isHidden=\(isHidden)")
+                return calendar
+            } catch {
+                calendarLogger.error("❌ Decoding error when updating calendar: \(String(describing: error))")
+                throw CalendarServiceError.decoding(error)
+            }
+        } catch {
+            if let calendarError = error as? CalendarServiceError {
+                throw calendarError
+            }
+            calendarLogger.error("❌ Network error when updating calendar \(calendarId, privacy: .private): \(String(describing: error))")
             throw CalendarServiceError.network(error)
         }
     }

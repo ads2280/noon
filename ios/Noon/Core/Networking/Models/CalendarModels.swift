@@ -114,9 +114,36 @@ struct GoogleCalendar: Identifiable, Decodable, Hashable {
     let description: String?
     let color: String?
     let isPrimary: Bool
+    let isHidden: Bool
     let googleAccountId: String
     let createdAt: Date
     let updatedAt: Date
+
+    private enum CodingKeys: String, CodingKey {
+        case id
+        case googleCalendarId
+        case name
+        case description
+        case color
+        case isPrimary
+        case isHidden
+        case googleAccountId
+        case createdAt
+        case updatedAt
+    }
+
+    private enum LegacyCodingKeys: String, CodingKey {
+        case id
+        case googleCalendarId = "google_calendar_id"
+        case name
+        case description
+        case color
+        case isPrimary = "is_primary"
+        case isHidden = "is_hidden"
+        case googleAccountId = "google_account_id"
+        case createdAt = "created_at"
+        case updatedAt = "updated_at"
+    }
 
     init(id: String,
          googleCalendarId: String,
@@ -124,6 +151,7 @@ struct GoogleCalendar: Identifiable, Decodable, Hashable {
          description: String?,
          color: String?,
          isPrimary: Bool,
+         isHidden: Bool = false,
          googleAccountId: String,
          createdAt: Date,
          updatedAt: Date) {
@@ -133,9 +161,48 @@ struct GoogleCalendar: Identifiable, Decodable, Hashable {
         self.description = description
         self.color = color
         self.isPrimary = isPrimary
+        self.isHidden = isHidden
         self.googleAccountId = googleAccountId
         self.createdAt = createdAt
         self.updatedAt = updatedAt
+    }
+
+    init(from decoder: Decoder) throws {
+        let camel = try decoder.container(keyedBy: CodingKeys.self)
+        let snake = try decoder.container(keyedBy: LegacyCodingKeys.self)
+
+        func decodeRequired<T: Decodable>(_ type: T.Type, camelKey: CodingKeys, snakeKey: LegacyCodingKeys) throws -> T {
+            if let value = try camel.decodeIfPresent(type, forKey: camelKey) {
+                return value
+            }
+            if let value = try snake.decodeIfPresent(type, forKey: snakeKey) {
+                return value
+            }
+            let description = "Missing required key \"\(snakeKey.rawValue)\" or \"\(camelKey.rawValue)\" when decoding GoogleCalendar."
+            throw DecodingError.keyNotFound(
+                snakeKey,
+                DecodingError.Context(codingPath: decoder.codingPath, debugDescription: description)
+            )
+        }
+
+        func decodeOptional<T: Decodable>(_ type: T.Type, camelKey: CodingKeys, snakeKey: LegacyCodingKeys) throws -> T? {
+            if let value = try camel.decodeIfPresent(type, forKey: camelKey) {
+                return value
+            }
+            return try snake.decodeIfPresent(type, forKey: snakeKey)
+        }
+
+        self.id = try decodeRequired(String.self, camelKey: .id, snakeKey: .id)
+        self.googleCalendarId = try decodeRequired(String.self, camelKey: .googleCalendarId, snakeKey: .googleCalendarId)
+        self.name = try decodeRequired(String.self, camelKey: .name, snakeKey: .name)
+        self.description = try decodeOptional(String.self, camelKey: .description, snakeKey: .description)
+        self.color = try decodeOptional(String.self, camelKey: .color, snakeKey: .color)
+        self.isPrimary = try decodeRequired(Bool.self, camelKey: .isPrimary, snakeKey: .isPrimary)
+        // isHidden defaults to false if not present (for backward compatibility)
+        self.isHidden = (try? decodeOptional(Bool.self, camelKey: .isHidden, snakeKey: .isHidden)) ?? false
+        self.googleAccountId = try decodeRequired(String.self, camelKey: .googleAccountId, snakeKey: .googleAccountId)
+        self.createdAt = try decodeRequired(Date.self, camelKey: .createdAt, snakeKey: .createdAt)
+        self.updatedAt = try decodeRequired(Date.self, camelKey: .updatedAt, snakeKey: .updatedAt)
     }
 }
 

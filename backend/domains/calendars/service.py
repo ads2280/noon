@@ -149,6 +149,8 @@ class CalendarService:
         # Validate calendar ID format first
         self._validate_calendar_id(calendar_id)
         supabase_calendar = calendars_by_id.get(calendar_id)
+        # Note: Hidden calendars are already filtered out by _prepare_context() which uses
+        # repository with default include_hidden=False, so they won't appear in calendars_by_id
         if not supabase_calendar:
             raise GoogleCalendarEventNotFoundError(
                 f"Calendar {calendar_id} not found in any linked Google account."
@@ -229,6 +231,8 @@ class CalendarService:
         # Validate calendar ID format first
         self._validate_calendar_id(calendar_id)
         supabase_calendar = calendars_by_id.get(calendar_id)
+        # Note: Hidden calendars are already filtered out by _prepare_context() which uses
+        # repository with default include_hidden=False, so they won't appear in calendars_by_id
         if not supabase_calendar:
             raise GoogleCalendarUserError(
                 f"Calendar {calendar_id} not found in any linked Google account."
@@ -350,6 +354,8 @@ class CalendarService:
         # Validate calendar ID format first
         self._validate_calendar_id(calendar_id)
         supabase_calendar = calendars_by_id.get(calendar_id)
+        # Note: Hidden calendars are already filtered out by _prepare_context() which uses
+        # repository with default include_hidden=False, so they won't appear in calendars_by_id
         if not supabase_calendar:
             raise GoogleCalendarUserError(
                 f"Calendar {calendar_id} not found in any linked Google account."
@@ -565,6 +571,8 @@ class CalendarService:
         # Validate calendar ID format first
         self._validate_calendar_id(calendar_id)
         supabase_calendar = calendars_by_id.get(calendar_id)
+        # Note: Hidden calendars are already filtered out by _prepare_context() which uses
+        # repository with default include_hidden=False, so they won't appear in calendars_by_id
         if not supabase_calendar:
             raise GoogleCalendarUserError(
                 f"Calendar {calendar_id} not found in any linked Google account."

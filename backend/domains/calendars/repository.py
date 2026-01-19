@@ -30,27 +30,48 @@ class CalendarRepository:
             raise SupabaseStorageError(exc.message) from exc
         return result.data or []
 
-    def get_calendars(self, user_id: str) -> List[Dict[str, Any]]:
-        """Get all calendars for a user from the database."""
+    def get_calendars(self, user_id: str, include_hidden: bool = False) -> List[Dict[str, Any]]:
+        """
+        Get all calendars for a user from the database.
+        
+        Args:
+            user_id: User ID
+            include_hidden: If False (default), filter out hidden calendars. If True, return all calendars.
+        
+        Returns:
+            List of calendar dictionaries
+        """
         client = get_service_client()
         try:
-            result = (
-                client.table("calendars").select("*").eq("user_id", user_id).execute()
-            )
+            query = client.table("calendars").select("*").eq("user_id", user_id)
+            if not include_hidden:
+                query = query.eq("is_hidden", False)
+            result = query.execute()
         except APIError as exc:
             raise SupabaseStorageError(exc.message) from exc
         return result.data or []
 
-    def get_calendars_by_account(self, google_account_id: str) -> List[Dict[str, Any]]:
-        """Get all calendars for a specific Google account."""
+    def get_calendars_by_account(self, google_account_id: str, include_hidden: bool = False) -> List[Dict[str, Any]]:
+        """
+        Get all calendars for a specific Google account.
+        
+        Args:
+            google_account_id: Google account ID
+            include_hidden: If False (default), filter out hidden calendars. If True, return all calendars.
+        
+        Returns:
+            List of calendar dictionaries
+        """
         client = get_service_client()
         try:
-            result = (
+            query = (
                 client.table("calendars")
                 .select("*")
                 .eq("google_account_id", google_account_id)
-                .execute()
             )
+            if not include_hidden:
+                query = query.eq("is_hidden", False)
+            result = query.execute()
         except APIError as exc:
             raise SupabaseStorageError(exc.message) from exc
         return result.data or []
@@ -187,11 +208,30 @@ class CalendarRepository:
         
         user_id = account_result.data[0]["user_id"]
 
+        # Get existing calendars to preserve is_hidden values
+        try:
+            existing_calendars_result = (
+                client.table("calendars")
+                .select("google_calendar_id, is_hidden")
+                .eq("google_account_id", google_account_id)
+                .execute()
+            )
+            existing_calendars = {
+                cal["google_calendar_id"]: cal.get("is_hidden", False)
+                for cal in (existing_calendars_result.data or [])
+            }
+        except APIError as exc:
+            # If we can't fetch existing calendars, proceed without preserving is_hidden
+            existing_calendars = {}
+
         normalized: List[Dict[str, Any]] = []
         for calendar in calendars:
             google_id = calendar.get("id")
             if not google_id:
                 continue
+
+            # Preserve is_hidden for existing calendars, default to False for new ones
+            is_hidden = existing_calendars.get(google_id, False)
 
             normalized.append(
                 _without_none(
@@ -205,6 +245,7 @@ class CalendarRepository:
                         or calendar.get("foregroundColor"),
                         "is_primary": bool(calendar.get("primary", False)),
                         "access_role": calendar.get("accessRole"),  # Google API uses camelCase "accessRole"
+                        "is_hidden": is_hidden,  # Preserve existing is_hidden value
                     }
                 )
             )
@@ -259,4 +300,41 @@ class CalendarRepository:
             raise SupabaseStorageError(
                 "Google account tokens could not be updated or account not found."
             )
+        return result.data[0]
+
+    def update_calendar(
+        self, user_id: str, calendar_id: str, data: Dict[str, Any]
+    ) -> Dict[str, Any]:
+        """
+        Update a calendar's properties.
+        
+        Args:
+            user_id: User ID (for RLS validation)
+            calendar_id: Calendar ID (UUID from database)
+            data: Dictionary of fields to update (e.g., {"is_hidden": True})
+        
+        Returns:
+            Updated calendar dictionary
+        
+        Raises:
+            SupabaseStorageError: If calendar not found or update failed
+        """
+        client = get_service_client()
+        payload = _without_none(data)
+        if not payload:
+            raise SupabaseStorageError("No fields provided to update.")
+        
+        try:
+            result = (
+                client.table("calendars")
+                .update(payload)
+                .eq("user_id", user_id)  # RLS ensures user owns the calendar
+                .eq("id", calendar_id)
+                .execute()
+            )
+        except APIError as exc:
+            raise SupabaseStorageError(exc.message) from exc
+        
+        if not result.data:
+            raise SupabaseStorageError("Calendar not found or update failed.")
         return result.data[0]

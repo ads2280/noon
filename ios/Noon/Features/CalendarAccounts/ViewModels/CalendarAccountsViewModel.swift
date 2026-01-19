@@ -18,6 +18,8 @@ final class CalendarAccountsViewModel: ObservableObject {
     @Published private(set) var linkingError: String?
     @Published private(set) var deletingAccountIDs: Set<String> = []
     @Published private(set) var deletionError: String?
+    @Published private(set) var togglingCalendarIDs: Set<String> = []
+    @Published private(set) var toggleError: String?
     @Published var expandedAccountIDs: Set<String> = []
 
     private let calendarService: CalendarServicing
@@ -189,6 +191,67 @@ final class CalendarAccountsViewModel: ObservableObject {
 
     func isExpanded(_ account: GoogleAccount) -> Bool {
         expandedAccountIDs.contains(account.id)
+    }
+
+    func toggleCalendarVisibility(_ calendar: GoogleCalendar) async {
+        guard togglingCalendarIDs.contains(calendar.id) == false else { return }
+
+        togglingCalendarIDs.insert(calendar.id)
+        defer { togglingCalendarIDs.remove(calendar.id) }
+
+        guard let accessToken = await currentAccessToken() else {
+            toggleError = "You're signed out. Please sign in again."
+            return
+        }
+
+        do {
+            let newIsHidden = !calendar.isHidden
+            let updatedCalendar = try await calendarService.updateCalendar(
+                accessToken: accessToken,
+                calendarId: calendar.id,
+                isHidden: newIsHidden
+            )
+            
+            // Update the calendar in the local accounts array
+            accounts = accounts.map { account in
+                guard account.id == calendar.googleAccountId,
+                      var calendars = account.calendars,
+                      let calendarIndex = calendars.firstIndex(where: { $0.id == calendar.id }) else {
+                    return account
+                }
+                calendars[calendarIndex] = updatedCalendar
+                return GoogleAccount(
+                    id: account.id,
+                    userId: account.userId,
+                    googleUserId: account.googleUserId,
+                    email: account.email,
+                    displayName: account.displayName,
+                    avatarURL: account.avatarURL,
+                    createdAt: account.createdAt,
+                    updatedAt: account.updatedAt,
+                    calendars: calendars
+                )
+            }
+            
+            toggleError = nil
+        } catch let serviceError as CalendarServiceError {
+            switch serviceError {
+            case .unauthorized:
+                toggleError = "We couldn't access your account. Please sign in again."
+            default:
+                toggleError = "We couldn't update the calendar visibility. Please try again."
+            }
+        } catch {
+            toggleError = "We couldn't update the calendar visibility. Please try again."
+        }
+    }
+
+    func isToggling(_ calendar: GoogleCalendar) -> Bool {
+        togglingCalendarIDs.contains(calendar.id)
+    }
+
+    func clearToggleError() {
+        toggleError = nil
     }
 
     private func currentAccessToken() async -> String? {

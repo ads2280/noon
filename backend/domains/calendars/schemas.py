@@ -55,9 +55,18 @@ class CalendarResponse(BaseModel):
     description: Optional[str] = None
     color: Optional[str] = None
     is_primary: bool = False
+    is_hidden: bool = False
     google_account_id: str
     created_at: datetime
     updated_at: datetime
+
+
+class CalendarUpdate(BaseModel):
+    """Schema for updating calendar properties."""
+    name: Optional[str] = None
+    description: Optional[str] = None
+    color: Optional[str] = None
+    is_hidden: Optional[bool] = None
 
 
 # Calendar event schemas

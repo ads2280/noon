@@ -62,6 +62,15 @@ struct AgentView: View {
                 try? await viewModel.loadCurrentDaySchedule()
             }
         }
+        .onAppear {
+            // Reload schedule when view reappears (e.g., returning from Calendar Accounts page)
+            // Only reload if viewModel has already been configured
+            if didConfigureViewModel {
+                Task {
+                    try? await viewModel.loadCurrentDaySchedule(force: true)
+                }
+            }
+        }
         .onDisappear {
             // Cleanup audio session when view disappears to free up resources
             viewModel.cleanupAudioSession()

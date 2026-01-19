@@ -79,6 +79,20 @@ struct CalendarAccountsView: View {
         } message: {
             Text(viewModel.deletionError ?? "")
         }
+        .alert("Unable to update calendar", isPresented: Binding(
+            get: { viewModel.toggleError != nil },
+            set: { isPresented in
+                if isPresented == false {
+                    viewModel.clearToggleError()
+                }
+            }
+        )) {
+            Button("OK", role: .cancel) {
+                viewModel.clearToggleError()
+            }
+        } message: {
+            Text(viewModel.toggleError ?? "")
+        }
     }
 }
 
@@ -246,6 +260,25 @@ private extension CalendarAccountsView {
                             .fill(ColorPalette.Surface.overlay.opacity(0.3))
                     )
             }
+            
+            // Toggle switch for hiding/showing calendar
+            if viewModel.isToggling(calendar) {
+                ProgressView()
+                    .progressViewStyle(.circular)
+                    .tint(ColorPalette.Text.secondary)
+                    .scaleEffect(0.85, anchor: .center)
+            } else {
+                Toggle("", isOn: Binding(
+                    get: { !calendar.isHidden },
+                    set: { _ in
+                        Task {
+                            await viewModel.toggleCalendarVisibility(calendar)
+                        }
+                    }
+                ))
+                .labelsHidden()
+                .tint(ColorPalette.Semantic.primary)
+            }
         }
         .padding(.vertical, 8)
         .padding(.horizontal, 12)
@@ -312,6 +345,31 @@ private final class MockCalendarService: CalendarServicing {
 
     func deleteCalendar(accessToken: String, accountId: String) async throws {
         accounts.removeAll { $0.id == accountId }
+    }
+
+    func updateCalendar(accessToken: String, calendarId: String, isHidden: Bool) async throws -> GoogleCalendar {
+        // Mock implementation - find and update the calendar
+        for account in accounts {
+            if let calendars = account.calendars,
+               let calendarIndex = calendars.firstIndex(where: { $0.id == calendarId }) {
+                let calendar = calendars[calendarIndex]
+                // Return updated calendar with new isHidden value
+                return GoogleCalendar(
+                    id: calendar.id,
+                    googleCalendarId: calendar.googleCalendarId,
+                    name: calendar.name,
+                    description: calendar.description,
+                    color: calendar.color,
+                    isPrimary: calendar.isPrimary,
+                    isHidden: isHidden,
+                    googleAccountId: calendar.googleAccountId,
+                    createdAt: calendar.createdAt,
+                    updatedAt: Date()
+                )
+            }
+        }
+        // If calendar not found, throw an error
+        throw CalendarServiceError.http(404)
     }
 
     func createEvent(accessToken: String, request: CreateEventRequest) async throws -> CalendarCreateEventResponse {

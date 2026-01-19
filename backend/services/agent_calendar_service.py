@@ -82,14 +82,30 @@ async def search_events_for_user(
     """
     wrapper = get_calendar_wrapper_for_user(user_id)
     
+    # Get user's calendars from Supabase (with hidden calendars filtered out)
+    repository = CalendarRepository()
+    user_calendars = repository.get_calendars(user_id)  # Default include_hidden=False filters hidden calendars
+    visible_calendar_ids = {cal["google_calendar_id"] for cal in user_calendars}
+    
     try:
-        # If a specific calendar is requested, search only that calendar
+        # If a specific calendar is requested, verify it's not hidden
         if calendar_id:
+            if calendar_id not in visible_calendar_ids:
+                return {
+                    "status": "error",
+                    "error": f"Calendar {calendar_id} not found or is hidden.",
+                    "count": 0,
+                    "events": [],
+                }
             calendars_to_search = [{"id": calendar_id}]
         else:
-            # Get all calendars for the user
+            # Get all calendars from Google API, but filter to only visible ones
             all_calendars = await wrapper.list_calendars(min_access_role="reader")
-            calendars_to_search = all_calendars
+            # Filter to only calendars that are visible (not hidden) in Supabase
+            calendars_to_search = [
+                cal for cal in all_calendars
+                if cal.get("id") in visible_calendar_ids
+            ]
         
         # Search across all calendars
         all_formatted_events = []
