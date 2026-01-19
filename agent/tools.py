@@ -14,6 +14,8 @@ from agent.schemas.agent_response import (
     CreateEventResponse,
     CreateEventMetadata,
     DateTimeDict,
+    TimedDateTime,
+    AllDayDateTime,
     UpdateEventResponse,
     UpdateEventMetadata,
     DeleteEventResponse,
@@ -353,8 +355,8 @@ def request_create_event(
         
         metadata = CreateEventMetadata(
             summary=summary,
-            start=DateTimeDict(date=start_d),
-            end=DateTimeDict(date=end_d),
+            start=AllDayDateTime(date=start_d),
+            end=AllDayDateTime(date=end_d),
             calendar_id=calendar_id,
             description=description,
             location=location,
@@ -366,8 +368,8 @@ def request_create_event(
         
         metadata = CreateEventMetadata(
             summary=summary,
-            start=DateTimeDict(dateTime=start_dt),
-            end=DateTimeDict(dateTime=end_dt),
+            start=TimedDateTime(dateTime=start_dt),
+            end=TimedDateTime(dateTime=end_dt),
             calendar_id=calendar_id,
             description=description,
             location=location,
@@ -423,22 +425,22 @@ def request_update_event(
     if has_datetime and has_date:
         raise ValueError("Cannot provide both datetime and date fields. Use datetime for timed events, date for all-day events.")
     
-    # Parse and create DateTimeDict objects
+    # Parse and create DateTimeDict union objects
     start_dt = None
     end_dt = None
     
     if has_date:
         # Handle all-day events
         if start_date:
-            start_dt = DateTimeDict(date=date.fromisoformat(start_date))
+            start_dt = AllDayDateTime(date=date.fromisoformat(start_date))
         if end_date:
-            end_dt = DateTimeDict(date=date.fromisoformat(end_date))
+            end_dt = AllDayDateTime(date=date.fromisoformat(end_date))
     elif has_datetime:
         # Handle timed events
         if start_time:
-            start_dt = DateTimeDict(dateTime=datetime.fromisoformat(start_time))
+            start_dt = TimedDateTime(dateTime=datetime.fromisoformat(start_time))
         if end_time:
-            end_dt = DateTimeDict(dateTime=datetime.fromisoformat(end_time))
+            end_dt = TimedDateTime(dateTime=datetime.fromisoformat(end_time))
     
     metadata = UpdateEventMetadata(
         event_id=event_id,

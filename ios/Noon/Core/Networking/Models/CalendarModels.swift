@@ -292,12 +292,65 @@ enum GoogleCalendarScheduleServiceError: LocalizedError {
     }
 }
 
+// Backend EventTime union type (matches backend TimedEventTime/AllDayEventTime)
+struct BackendEventTime: Encodable {
+    enum EventTimeType: String, Codable {
+        case timed
+        case allDay = "all_day"
+    }
+    
+    let type: EventTimeType
+    let dateTime: Date?
+    let date: String?
+    let timeZone: String?
+    
+    init(timed dateTime: Date, timeZone: String?) {
+        self.type = .timed
+        self.dateTime = dateTime
+        self.date = nil
+        self.timeZone = timeZone
+    }
+    
+    init(allDay date: String) {
+        self.type = .allDay
+        self.dateTime = nil
+        self.date = date
+        self.timeZone = nil
+    }
+    
+    enum CodingKeys: String, CodingKey {
+        case type
+        case dateTime
+        case date
+        case timeZone
+    }
+    
+    func encode(to encoder: Encoder) throws {
+        var container = encoder.container(keyedBy: CodingKeys.self)
+        try container.encode(type, forKey: .type)
+        
+        switch type {
+        case .timed:
+            if let dateTime = dateTime {
+                let formatter = ISO8601DateFormatter()
+                formatter.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
+                try container.encode(formatter.string(from: dateTime), forKey: .dateTime)
+            }
+            if let timeZone = timeZone {
+                try container.encode(timeZone, forKey: .timeZone)
+            }
+        case .allDay:
+            if let date = date {
+                try container.encode(date, forKey: .date)
+            }
+        }
+    }
+}
+
 struct CreateEventRequest: Encodable {
     let summary: String
-    let start: Date?
-    let end: Date?
-    let startDate: String?
-    let endDate: String?
+    let start: BackendEventTime
+    let end: BackendEventTime
     let calendarId: String
     let description: String?
     let location: String?
@@ -307,8 +360,6 @@ struct CreateEventRequest: Encodable {
         case summary
         case start
         case end
-        case startDate = "start_date"
-        case endDate = "end_date"
         case calendarId = "calendar_id"
         case description
         case location
@@ -319,24 +370,10 @@ struct CreateEventRequest: Encodable {
         var container = encoder.container(keyedBy: CodingKeys.self)
         
         try container.encode(summary, forKey: .summary)
+        try container.encode(start, forKey: .start)
+        try container.encode(end, forKey: .end)
         try container.encode(calendarId, forKey: .calendarId)
         try container.encode(timezone, forKey: .timezone)
-        
-        // Encode datetime fields (for timed events)
-        if let start = start {
-            try container.encode(start, forKey: .start)
-        }
-        if let end = end {
-            try container.encode(end, forKey: .end)
-        }
-        
-        // Encode date fields (for all-day events)
-        if let startDate = startDate {
-            try container.encode(startDate, forKey: .startDate)
-        }
-        if let endDate = endDate {
-            try container.encode(endDate, forKey: .endDate)
-        }
         
         // Encode optional fields
         if let description = description {
@@ -354,10 +391,8 @@ struct CalendarCreateEventResponse: Decodable {
 
 struct UpdateEventRequest: Encodable {
     let summary: String?
-    let start: Date?
-    let end: Date?
-    let startDate: String?
-    let endDate: String?
+    let start: BackendEventTime?
+    let end: BackendEventTime?
     let calendarId: String
     let description: String?
     let location: String?
@@ -367,8 +402,6 @@ struct UpdateEventRequest: Encodable {
         case summary
         case start
         case end
-        case startDate = "start_date"
-        case endDate = "end_date"
         case calendarId = "calendar_id"
         case description
         case location
@@ -387,12 +420,6 @@ struct UpdateEventRequest: Encodable {
         }
         if let end = end {
             try container.encode(end, forKey: .end)
-        }
-        if let startDate = startDate {
-            try container.encode(startDate, forKey: .startDate)
-        }
-        if let endDate = endDate {
-            try container.encode(endDate, forKey: .endDate)
         }
         // Always encode required fields
         try container.encode(calendarId, forKey: .calendarId)

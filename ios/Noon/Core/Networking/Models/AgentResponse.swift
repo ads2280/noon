@@ -502,48 +502,92 @@ struct NoActionMetadata: Codable, Sendable {
 
 // MARK: - Helpers
 
-struct DateTimeDict: Codable, Sendable {
-    let dateTime: Date?  // Decoded from ISO8601 string with .iso8601 decoder strategy (for timed events)
-    let date: String?    // Date string in "YYYY-MM-DD" format (for all-day events)
+enum DateTimeDict: Codable, Sendable {
+    case timed(dateTime: Date)
+    case allDay(date: String)
     
     // Computed property to convert date string to Date for convenience
     var dateAsDate: Date? {
-        guard let dateString = date else { return nil }
-        let formatter = DateFormatter()
-        formatter.dateFormat = "yyyy-MM-dd"
-        formatter.timeZone = TimeZone(secondsFromGMT: 0)
-        formatter.calendar = Calendar(identifier: .gregorian)
-        formatter.locale = Locale(identifier: "en_US_POSIX")
-        return formatter.date(from: dateString)
+        if case .allDay(let dateString) = self {
+            let formatter = DateFormatter()
+            formatter.dateFormat = "yyyy-MM-dd"
+            formatter.timeZone = TimeZone(secondsFromGMT: 0)
+            formatter.calendar = Calendar(identifier: .gregorian)
+            formatter.locale = Locale(identifier: "en_US_POSIX")
+            return formatter.date(from: dateString)
+        }
+        return nil
     }
     
     // Check if this represents an all-day event
     var isAllDay: Bool {
-        date != nil && dateTime == nil
+        if case .allDay = self {
+            return true
+        }
+        return false
+    }
+    
+    var dateTime: Date? {
+        if case .timed(let dateTime) = self {
+            return dateTime
+        }
+        return nil
+    }
+    
+    var date: String? {
+        if case .allDay(let date) = self {
+            return date
+        }
+        return nil
+    }
+    
+    init(dateTime: Date) {
+        self = .timed(dateTime: dateTime)
+    }
+    
+    init(date: String) {
+        self = .allDay(date: date)
     }
     
     init(dateTime: Date? = nil, date: String? = nil) {
-        self.dateTime = dateTime
-        self.date = date
+        if let dateTime = dateTime {
+            self = .timed(dateTime: dateTime)
+        } else if let date = date {
+            self = .allDay(date: date)
+        } else {
+            // Default to all-day with today's date if nothing provided (shouldn't happen in practice)
+            let formatter = DateFormatter()
+            formatter.dateFormat = "yyyy-MM-dd"
+            formatter.timeZone = TimeZone(secondsFromGMT: 0)
+            self = .allDay(date: formatter.string(from: Date()))
+        }
+    }
+    
+    enum CodingKeys: String, CodingKey {
+        case dateTime
+        case date
+        case type
     }
     
     init(from decoder: Decoder) throws {
         let container = try decoder.container(keyedBy: CodingKeys.self)
         
-        // Try to decode dateTime (ISO8601 format)
+        // Check if we have dateTime (timed) or date (all-day)
         if let dateTimeString = try? container.decode(String.self, forKey: .dateTime) {
             let formatter = ISO8601DateFormatter()
             formatter.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
-            self.dateTime = formatter.date(from: dateTimeString) ?? ISO8601DateFormatter().date(from: dateTimeString)
+            if let dateTime = formatter.date(from: dateTimeString) ?? ISO8601DateFormatter().date(from: dateTimeString) {
+                self = .timed(dateTime: dateTime)
+            } else {
+                throw DecodingError.dataCorruptedError(
+                    forKey: .dateTime,
+                    in: container,
+                    debugDescription: "Unable to parse dateTime string: \(dateTimeString)"
+                )
+            }
+        } else if let dateString = try? container.decode(String.self, forKey: .date) {
+            self = .allDay(date: dateString)
         } else {
-            self.dateTime = nil
-        }
-        
-        // Try to decode date (YYYY-MM-DD format)
-        self.date = try? container.decode(String.self, forKey: .date)
-        
-        // Validate that at least one field is present
-        if dateTime == nil && date == nil {
             throw DecodingError.dataCorrupted(
                 DecodingError.Context(
                     codingPath: decoder.codingPath,
@@ -555,19 +599,14 @@ struct DateTimeDict: Codable, Sendable {
     
     func encode(to encoder: Encoder) throws {
         var container = encoder.container(keyedBy: CodingKeys.self)
-        if let dateTime = dateTime {
+        switch self {
+        case .timed(let dateTime):
             let formatter = ISO8601DateFormatter()
             formatter.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
             try container.encode(formatter.string(from: dateTime), forKey: .dateTime)
-        }
-        if let date = date {
+        case .allDay(let date):
             try container.encode(date, forKey: .date)
         }
-    }
-    
-    private enum CodingKeys: String, CodingKey {
-        case dateTime
-        case date
     }
 }
 

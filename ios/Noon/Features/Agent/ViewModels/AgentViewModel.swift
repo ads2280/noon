@@ -887,21 +887,22 @@ final class AgentViewModel: ObservableObject {
         let fetchDuration = Date().timeIntervalSince(fetchStart)
         await timingLogger.logStep("frontend.handle_show_event.fetch_event", duration: fetchDuration)
         
-        // Determine event day - handle both all-day and timed events
+        // Determine event day using enum pattern matching
         let eventDay: Date
-        if let startDateTime = event.start?.dateTime {
-            // Timed event
-            eventDay = calendar.startOfDay(for: startDateTime)
-        } else if let startDateString = event.start?.date {
-            // All-day event - parse date string
-            let dateFormatter = DateFormatter()
-            dateFormatter.dateFormat = "yyyy-MM-dd"
-            dateFormatter.timeZone = calendar.timeZone
-            guard let startDate = dateFormatter.date(from: startDateString) else {
-                print("ERROR: Event \(eventID) has invalid start date string: \(startDateString)")
-                throw NSError(domain: "AgentViewModel", code: 1, userInfo: [NSLocalizedDescriptionKey: "Event has invalid start date"])
+        if let start = event.start {
+            switch start.eventTime {
+            case .timed(let dateTime, _):
+                eventDay = calendar.startOfDay(for: dateTime)
+            case .allDay(let dateString):
+                let dateFormatter = DateFormatter()
+                dateFormatter.dateFormat = "yyyy-MM-dd"
+                dateFormatter.timeZone = calendar.timeZone
+                guard let startDate = dateFormatter.date(from: dateString) else {
+                    print("ERROR: Event \(eventID) has invalid start date string: \(dateString)")
+                    throw NSError(domain: "AgentViewModel", code: 1, userInfo: [NSLocalizedDescriptionKey: "Event has invalid start date"])
+                }
+                eventDay = calendar.startOfDay(for: startDate)
             }
-            eventDay = calendar.startOfDay(for: startDate)
         } else {
             print("ERROR: Event \(eventID) has no start date")
             throw NSError(domain: "AgentViewModel", code: 1, userInfo: [NSLocalizedDescriptionKey: "Event has no start date"])
@@ -935,21 +936,22 @@ final class AgentViewModel: ObservableObject {
             eventId: eventID
         )
         
-        // Determine event day - handle both all-day and timed events
+        // Determine event day using enum pattern matching
         let eventDay: Date
-        if let startDateTime = event.start?.dateTime {
-            // Timed event
-            eventDay = calendar.startOfDay(for: startDateTime)
-        } else if let startDateString = event.start?.date {
-            // All-day event - parse date string
-            let dateFormatter = DateFormatter()
-            dateFormatter.dateFormat = "yyyy-MM-dd"
-            dateFormatter.timeZone = calendar.timeZone
-            guard let startDate = dateFormatter.date(from: startDateString) else {
-                print("ERROR: Event \(eventID) has invalid start date string: \(startDateString)")
-                throw NSError(domain: "AgentViewModel", code: 1, userInfo: [NSLocalizedDescriptionKey: "Event has invalid start date"])
+        if let start = event.start {
+            switch start.eventTime {
+            case .timed(let dateTime, _):
+                eventDay = calendar.startOfDay(for: dateTime)
+            case .allDay(let dateString):
+                let dateFormatter = DateFormatter()
+                dateFormatter.dateFormat = "yyyy-MM-dd"
+                dateFormatter.timeZone = calendar.timeZone
+                guard let startDate = dateFormatter.date(from: dateString) else {
+                    print("ERROR: Event \(eventID) has invalid start date string: \(dateString)")
+                    throw NSError(domain: "AgentViewModel", code: 1, userInfo: [NSLocalizedDescriptionKey: "Event has invalid start date"])
+                }
+                eventDay = calendar.startOfDay(for: startDate)
             }
-            eventDay = calendar.startOfDay(for: startDate)
         } else {
             print("ERROR: Event \(eventID) has no start date")
             throw NSError(domain: "AgentViewModel", code: 1, userInfo: [NSLocalizedDescriptionKey: "Event has no start date"])
@@ -984,106 +986,73 @@ final class AgentViewModel: ObservableObject {
         // Create a merged CalendarEvent by applying update metadata to original event
         let timezone = TimeZone.autoupdatingCurrent.identifier
         
-        // Determine updated start date/time - handle both all-day and timed events
+        // Determine updated start date/time using enum pattern matching
         let updatedStart: CalendarEvent.EventDateTime?
         if let metadataStart = metadata.start {
-            if let metadataStartDateTime = metadataStart.dateTime {
-                // Timed event update
+            switch metadataStart {
+            case .timed(let dateTime):
                 updatedStart = CalendarEvent.EventDateTime(
-                    dateTime: metadataStartDateTime,
-                    date: nil,
-                    timeZone: timezone
+                    eventTime: .timed(dateTime: dateTime, timeZone: timezone)
                 )
-            } else if let metadataStartDate = metadataStart.date {
-                // All-day event update
+            case .allDay(let date):
                 updatedStart = CalendarEvent.EventDateTime(
-                    dateTime: nil,
-                    date: metadataStartDate,
-                    timeZone: nil
+                    eventTime: .allDay(date: date)
                 )
-            } else {
-                updatedStart = originalEvent.start
             }
         } else {
             updatedStart = originalEvent.start
         }
         
-        // Determine updated end date/time - handle both all-day and timed events
+        // Determine updated end date/time using enum pattern matching
         let updatedEnd: CalendarEvent.EventDateTime?
         if let metadataEnd = metadata.end {
-            if let metadataEndDateTime = metadataEnd.dateTime {
-                // Timed event update
+            switch metadataEnd {
+            case .timed(let dateTime):
                 updatedEnd = CalendarEvent.EventDateTime(
-                    dateTime: metadataEndDateTime,
-                    date: nil,
-                    timeZone: timezone
+                    eventTime: .timed(dateTime: dateTime, timeZone: timezone)
                 )
-            } else if let metadataEndDate = metadataEnd.date {
-                // All-day event update
+            case .allDay(let date):
                 updatedEnd = CalendarEvent.EventDateTime(
-                    dateTime: nil,
-                    date: metadataEndDate,
-                    timeZone: nil
+                    eventTime: .allDay(date: date)
                 )
-            } else {
-                updatedEnd = originalEvent.end
             }
         } else {
             updatedEnd = originalEvent.end
         }
         
-        // Determine the day for the preview event (use updated start if available, otherwise original)
-        // Handle both all-day and timed events
+        // Determine the day for the preview event using enum pattern matching
         let eventDay: Date
         if let metadataStart = metadata.start {
-            if let metadataStartDateTime = metadataStart.dateTime {
-                // Timed event
-                eventDay = calendar.startOfDay(for: metadataStartDateTime)
-            } else if let metadataStartDate = metadataStart.date {
-                // All-day event - parse date string
+            switch metadataStart {
+            case .timed(let dateTime):
+                eventDay = calendar.startOfDay(for: dateTime)
+            case .allDay(let dateString):
                 let dateFormatter = DateFormatter()
                 dateFormatter.dateFormat = "yyyy-MM-dd"
                 dateFormatter.timeZone = calendar.timeZone
-                guard let startDate = dateFormatter.date(from: metadataStartDate) else {
-                    print("ERROR: Event \(eventID) has invalid start date string: \(metadataStartDate)")
+                guard let startDate = dateFormatter.date(from: dateString) else {
+                    print("ERROR: Event \(eventID) has invalid start date string: \(dateString)")
                     throw NSError(domain: "AgentViewModel", code: 1, userInfo: [NSLocalizedDescriptionKey: "Event has invalid start date"])
                 }
                 eventDay = calendar.startOfDay(for: startDate)
-            } else {
-                // Fall back to original event
-                if let originalStartDateTime = originalEvent.start?.dateTime {
-                    eventDay = calendar.startOfDay(for: originalStartDateTime)
-                } else if let originalStartDateString = originalEvent.start?.date {
-                    let dateFormatter = DateFormatter()
-                    dateFormatter.dateFormat = "yyyy-MM-dd"
-                    dateFormatter.timeZone = calendar.timeZone
-                    guard let originalStartDate = dateFormatter.date(from: originalStartDateString) else {
-                        print("ERROR: Event \(eventID) has invalid original start date")
-                        throw NSError(domain: "AgentViewModel", code: 1, userInfo: [NSLocalizedDescriptionKey: "Event has invalid start date"])
-                    }
-                    eventDay = calendar.startOfDay(for: originalStartDate)
-                } else {
-                    print("ERROR: Event \(eventID) has no start date")
-                    throw NSError(domain: "AgentViewModel", code: 1, userInfo: [NSLocalizedDescriptionKey: "Event has no start date"])
-                }
             }
-        } else {
-            // No metadata start, use original event
-            if let originalStartDateTime = originalEvent.start?.dateTime {
-                eventDay = calendar.startOfDay(for: originalStartDateTime)
-            } else if let originalStartDateString = originalEvent.start?.date {
+        } else if let originalStart = originalEvent.start {
+            switch originalStart.eventTime {
+            case .timed(let dateTime, _):
+                eventDay = calendar.startOfDay(for: dateTime)
+            case .allDay(let dateString):
                 let dateFormatter = DateFormatter()
                 dateFormatter.dateFormat = "yyyy-MM-dd"
                 dateFormatter.timeZone = calendar.timeZone
-                guard let originalStartDate = dateFormatter.date(from: originalStartDateString) else {
-                    print("ERROR: Event \(eventID) has invalid original start date")
+                guard let startDate = dateFormatter.date(from: dateString) else {
+                    print("ERROR: Event \(eventID) has invalid original start date string: \(dateString)")
                     throw NSError(domain: "AgentViewModel", code: 1, userInfo: [NSLocalizedDescriptionKey: "Event has invalid start date"])
                 }
-                eventDay = calendar.startOfDay(for: originalStartDate)
-            } else {
-                print("ERROR: Event \(eventID) has no start date")
-                throw NSError(domain: "AgentViewModel", code: 1, userInfo: [NSLocalizedDescriptionKey: "Event has no start date"])
+                eventDay = calendar.startOfDay(for: startDate)
             }
+        } else {
+            print("ERROR: Event \(eventID) has no start date")
+            throw NSError(domain: "AgentViewModel", code: 1, userInfo: [NSLocalizedDescriptionKey: "Event has no start date"])
         }
         
         // Fetch the schedule for that day
@@ -1208,15 +1177,13 @@ final class AgentViewModel: ObservableObject {
         let metadata = response.metadata
         let timezone = TimeZone.autoupdatingCurrent.identifier
         
-        // Determine if this is an all-day or timed event
-        let isAllDay = metadata.start.isAllDay
-        
-        // Determine event day and create EventDateTime objects
+        // Determine event day and create EventDateTime objects using enum pattern matching
         let eventDay: Date
         let startEventDateTime: CalendarEvent.EventDateTime
         let endEventDateTime: CalendarEvent.EventDateTime
         
-        if isAllDay, let startDateString = metadata.start.date, let endDateString = metadata.end.date {
+        switch (metadata.start, metadata.end) {
+        case (.allDay(let startDateString), .allDay(let endDateString)):
             // All-day event - parse date strings
             let dateFormatter = DateFormatter()
             dateFormatter.dateFormat = "yyyy-MM-dd"
@@ -1227,31 +1194,23 @@ final class AgentViewModel: ObservableObject {
             eventDay = calendar.startOfDay(for: startDate)
             
             startEventDateTime = CalendarEvent.EventDateTime(
-                dateTime: nil,
-                date: startDateString,
-                timeZone: nil
+                eventTime: .allDay(date: startDateString)
             )
             endEventDateTime = CalendarEvent.EventDateTime(
-                dateTime: nil,
-                date: endDateString,
-                timeZone: nil
+                eventTime: .allDay(date: endDateString)
             )
-        } else if let startDateTime = metadata.start.dateTime, let endDateTime = metadata.end.dateTime {
+        case (.timed(let startDateTime), .timed(let endDateTime)):
             // Timed event
             eventDay = calendar.startOfDay(for: startDateTime)
             
             startEventDateTime = CalendarEvent.EventDateTime(
-                dateTime: startDateTime,
-                date: nil,
-                timeZone: timezone
+                eventTime: .timed(dateTime: startDateTime, timeZone: timezone)
             )
             endEventDateTime = CalendarEvent.EventDateTime(
-                dateTime: endDateTime,
-                date: nil,
-                timeZone: timezone
+                eventTime: .timed(dateTime: endDateTime, timeZone: timezone)
             )
-        } else {
-            throw NSError(domain: "AgentViewModel", code: 1, userInfo: [NSLocalizedDescriptionKey: "Event must have either dateTime or date fields"])
+        default:
+            throw NSError(domain: "AgentViewModel", code: 1, userInfo: [NSLocalizedDescriptionKey: "Start and end must both be timed or both be all-day events"])
         }
         
         // Fetch the schedule for that day
@@ -1304,13 +1263,42 @@ final class AgentViewModel: ObservableObject {
         let newDisplayEvent = DisplayEvent(event: tempEvent, style: .new)
         displayEvents.append(newDisplayEvent)
         
-        // Sort events by start time
+        // Sort events by start time using enum pattern matching
         displayEvents.sort { event1, event2 in
-            guard let start1 = event1.event.start?.dateTime,
-                  let start2 = event2.event.start?.dateTime else {
+            let start1: Date?
+            if let start = event1.event.start {
+                switch start.eventTime {
+                case .timed(let dateTime, _):
+                    start1 = dateTime
+                case .allDay(let dateString):
+                    let dateFormatter = DateFormatter()
+                    dateFormatter.dateFormat = "yyyy-MM-dd"
+                    dateFormatter.timeZone = calendar.timeZone
+                    start1 = dateFormatter.date(from: dateString)
+                }
+            } else {
+                start1 = nil
+            }
+            
+            let start2: Date?
+            if let start = event2.event.start {
+                switch start.eventTime {
+                case .timed(let dateTime, _):
+                    start2 = dateTime
+                case .allDay(let dateString):
+                    let dateFormatter = DateFormatter()
+                    dateFormatter.dateFormat = "yyyy-MM-dd"
+                    dateFormatter.timeZone = calendar.timeZone
+                    start2 = dateFormatter.date(from: dateString)
+                }
+            } else {
+                start2 = nil
+            }
+            
+            guard let s1 = start1, let s2 = start2 else {
                 return false
             }
-            return start1 < start2
+            return s1 < s2
         }
         
         // Set focus event with .new style (using temp event ID)
@@ -1373,36 +1361,33 @@ final class AgentViewModel: ObservableObject {
             do {
                 var token = try await resolveAccessToken(initial: accessToken)
                 
-                // Build the create request from metadata - handle both all-day and timed events
+                // Build the create request from metadata using enum pattern matching
                 let createRequest: CreateEventRequest
-                if let startDateTime = metadata.start.dateTime, let endDateTime = metadata.end.dateTime {
+                switch (metadata.start, metadata.end) {
+                case (.timed(let startDateTime), .timed(let endDateTime)):
                     // Timed event
                     createRequest = CreateEventRequest(
                         summary: metadata.summary,
-                        start: startDateTime,
-                        end: endDateTime,
-                        startDate: nil,
-                        endDate: nil,
+                        start: BackendEventTime(timed: startDateTime, timeZone: timezone),
+                        end: BackendEventTime(timed: endDateTime, timeZone: timezone),
                         calendarId: metadata.calendar_id,
                         description: metadata.description,
                         location: metadata.location,
                         timezone: timezone
                     )
-                } else if let startDateString = metadata.start.date, let endDateString = metadata.end.date {
-                    // All-day event - send date strings directly to backend
+                case (.allDay(let startDateString), .allDay(let endDateString)):
+                    // All-day event
                     createRequest = CreateEventRequest(
                         summary: metadata.summary,
-                        start: nil,
-                        end: nil,
-                        startDate: startDateString,
-                        endDate: endDateString,
+                        start: BackendEventTime(allDay: startDateString),
+                        end: BackendEventTime(allDay: endDateString),
                         calendarId: metadata.calendar_id,
                         description: metadata.description,
                         location: metadata.location,
                         timezone: timezone
                     )
-                } else {
-                    throw NSError(domain: "AgentViewModel", code: 1, userInfo: [NSLocalizedDescriptionKey: "Event must have either dateTime or date fields"])
+                default:
+                    throw NSError(domain: "AgentViewModel", code: 1, userInfo: [NSLocalizedDescriptionKey: "Start and end must both be timed or both be all-day events"])
                 }
                 
                 // Call the calendar service to create the event
@@ -1428,32 +1413,34 @@ final class AgentViewModel: ObservableObject {
                 let createdEvent = createdResponse.event
                 let createdEventID = createdEvent.id
                 
-                // Determine event day from created event (handle both all-day and timed)
+                // Determine event day from created event using enum pattern matching
                 let eventDay: Date
-                if let startDateTime = createdEvent.start?.dateTime {
-                    eventDay = calendar.startOfDay(for: startDateTime)
-                } else if let startDateString = createdEvent.start?.date {
-                    let dateFormatter = DateFormatter()
-                    dateFormatter.dateFormat = "yyyy-MM-dd"
-                    dateFormatter.timeZone = calendar.timeZone
-                    guard let startDate = dateFormatter.date(from: startDateString) else {
-                        throw NSError(domain: "AgentViewModel", code: 1, userInfo: [NSLocalizedDescriptionKey: "Invalid start date format"])
-                    }
-                    eventDay = calendar.startOfDay(for: startDate)
-                } else {
-                    // Fallback: use metadata to determine day
-                    if let metadataStartDateTime = metadata.start.dateTime {
-                        eventDay = calendar.startOfDay(for: metadataStartDateTime)
-                    } else if let metadataStartDateString = metadata.start.date {
+                if let start = createdEvent.start {
+                    switch start.eventTime {
+                    case .timed(let dateTime, _):
+                        eventDay = calendar.startOfDay(for: dateTime)
+                    case .allDay(let dateString):
                         let dateFormatter = DateFormatter()
                         dateFormatter.dateFormat = "yyyy-MM-dd"
                         dateFormatter.timeZone = calendar.timeZone
-                        guard let metadataStartDate = dateFormatter.date(from: metadataStartDateString) else {
+                        guard let startDate = dateFormatter.date(from: dateString) else {
                             throw NSError(domain: "AgentViewModel", code: 1, userInfo: [NSLocalizedDescriptionKey: "Invalid start date format"])
                         }
-                        eventDay = calendar.startOfDay(for: metadataStartDate)
-                    } else {
-                        throw NSError(domain: "AgentViewModel", code: 1, userInfo: [NSLocalizedDescriptionKey: "Cannot determine event day"])
+                        eventDay = calendar.startOfDay(for: startDate)
+                    }
+                } else {
+                    // Fallback: use metadata to determine day
+                    switch metadata.start {
+                    case .timed(let dateTime):
+                        eventDay = calendar.startOfDay(for: dateTime)
+                    case .allDay(let dateString):
+                        let dateFormatter = DateFormatter()
+                        dateFormatter.dateFormat = "yyyy-MM-dd"
+                        dateFormatter.timeZone = calendar.timeZone
+                        guard let startDate = dateFormatter.date(from: dateString) else {
+                            throw NSError(domain: "AgentViewModel", code: 1, userInfo: [NSLocalizedDescriptionKey: "Invalid start date format"])
+                        }
+                        eventDay = calendar.startOfDay(for: startDate)
                     }
                 }
                 
@@ -1486,24 +1473,38 @@ final class AgentViewModel: ObservableObject {
             do {
                 var token = try await resolveAccessToken(initial: accessToken)
 
-                // Build update request from metadata (only include fields that are present)
-                // Handle both timed events (dateTime) and all-day events (date)
+                // Build update request from metadata using enum pattern matching
                 let timezone = TimeZone.autoupdatingCurrent.identifier
                 
-                // Extract start value - prefer dateTime for timed events, otherwise use date for all-day events
-                let startDateTime: Date? = metadata.start?.dateTime
-                let startDateString: String? = (startDateTime == nil) ? metadata.start?.date : nil
+                // Convert DateTimeDict to BackendEventTime
+                let startBackendTime: BackendEventTime?
+                if let start = metadata.start {
+                    switch start {
+                    case .timed(let dateTime):
+                        startBackendTime = BackendEventTime(timed: dateTime, timeZone: timezone)
+                    case .allDay(let date):
+                        startBackendTime = BackendEventTime(allDay: date)
+                    }
+                } else {
+                    startBackendTime = nil
+                }
                 
-                // Extract end value - prefer dateTime for timed events, otherwise use date for all-day events
-                let endDateTime: Date? = metadata.end?.dateTime
-                let endDateString: String? = (endDateTime == nil) ? metadata.end?.date : nil
+                let endBackendTime: BackendEventTime?
+                if let end = metadata.end {
+                    switch end {
+                    case .timed(let dateTime):
+                        endBackendTime = BackendEventTime(timed: dateTime, timeZone: timezone)
+                    case .allDay(let date):
+                        endBackendTime = BackendEventTime(allDay: date)
+                    }
+                } else {
+                    endBackendTime = nil
+                }
                 
                 let updateRequest = UpdateEventRequest(
                     summary: metadata.summary,
-                    start: startDateTime,
-                    end: endDateTime,
-                    startDate: startDateString,
-                    endDate: endDateString,
+                    start: startBackendTime,
+                    end: endBackendTime,
                     calendarId: calendarID,
                     description: metadata.description,
                     location: metadata.location,
@@ -1531,45 +1532,22 @@ final class AgentViewModel: ObservableObject {
                     )
                 }
 
-                // Determine the day of the updated event
+                // Determine the day of the updated event using enum pattern matching
                 // First try metadata (if start time was updated), otherwise fetch the event
                 let eventStartDate: Date
                 if let startFromMetadata = metadata.start {
-                    if let startDateTime = startFromMetadata.dateTime {
-                        // Timed event
-                        eventStartDate = startDateTime
-                    } else if let startDateString = startFromMetadata.date {
-                        // All-day event - parse date string
+                    switch startFromMetadata {
+                    case .timed(let dateTime):
+                        eventStartDate = dateTime
+                    case .allDay(let dateString):
                         let dateFormatter = DateFormatter()
                         dateFormatter.dateFormat = "yyyy-MM-dd"
                         dateFormatter.timeZone = calendar.timeZone
-                        guard let parsedDate = dateFormatter.date(from: startDateString) else {
-                            print("ERROR: Updated event \(eventID) has invalid start date string: \(startDateString)")
+                        guard let parsedDate = dateFormatter.date(from: dateString) else {
+                            print("ERROR: Updated event \(eventID) has invalid start date string: \(dateString)")
                             throw NSError(domain: "AgentViewModel", code: 1, userInfo: [NSLocalizedDescriptionKey: "Updated event has invalid start date"])
                         }
                         eventStartDate = parsedDate
-                    } else {
-                        // Fetch the updated event to get its current start date
-                        let updatedEvent = try await calendarService.fetchEvent(
-                            accessToken: token,
-                            calendarId: calendarID,
-                            eventId: eventID
-                        )
-                        if let startDateTime = updatedEvent.start?.dateTime {
-                            eventStartDate = startDateTime
-                        } else if let startDateString = updatedEvent.start?.date {
-                            let dateFormatter = DateFormatter()
-                            dateFormatter.dateFormat = "yyyy-MM-dd"
-                            dateFormatter.timeZone = calendar.timeZone
-                            guard let parsedDate = dateFormatter.date(from: startDateString) else {
-                                print("ERROR: Updated event \(eventID) has invalid start date string: \(startDateString)")
-                                throw NSError(domain: "AgentViewModel", code: 1, userInfo: [NSLocalizedDescriptionKey: "Updated event has invalid start date"])
-                            }
-                            eventStartDate = parsedDate
-                        } else {
-                            print("ERROR: Updated event \(eventID) has no start date")
-                            throw NSError(domain: "AgentViewModel", code: 1, userInfo: [NSLocalizedDescriptionKey: "Updated event has no start date"])
-                        }
                     }
                 } else {
                     // Fetch the updated event to get its current start date
@@ -1578,17 +1556,20 @@ final class AgentViewModel: ObservableObject {
                         calendarId: calendarID,
                         eventId: eventID
                     )
-                    if let startDateTime = updatedEvent.start?.dateTime {
-                        eventStartDate = startDateTime
-                    } else if let startDateString = updatedEvent.start?.date {
-                        let dateFormatter = DateFormatter()
-                        dateFormatter.dateFormat = "yyyy-MM-dd"
-                        dateFormatter.timeZone = calendar.timeZone
-                        guard let parsedDate = dateFormatter.date(from: startDateString) else {
-                            print("ERROR: Updated event \(eventID) has invalid start date string: \(startDateString)")
-                            throw NSError(domain: "AgentViewModel", code: 1, userInfo: [NSLocalizedDescriptionKey: "Updated event has invalid start date"])
+                    if let start = updatedEvent.start {
+                        switch start.eventTime {
+                        case .timed(let dateTime, _):
+                            eventStartDate = dateTime
+                        case .allDay(let dateString):
+                            let dateFormatter = DateFormatter()
+                            dateFormatter.dateFormat = "yyyy-MM-dd"
+                            dateFormatter.timeZone = calendar.timeZone
+                            guard let parsedDate = dateFormatter.date(from: dateString) else {
+                                print("ERROR: Updated event \(eventID) has invalid start date string: \(dateString)")
+                                throw NSError(domain: "AgentViewModel", code: 1, userInfo: [NSLocalizedDescriptionKey: "Updated event has invalid start date"])
+                            }
+                            eventStartDate = parsedDate
                         }
-                        eventStartDate = parsedDate
                     } else {
                         print("ERROR: Updated event \(eventID) has no start date")
                         throw NSError(domain: "AgentViewModel", code: 1, userInfo: [NSLocalizedDescriptionKey: "Updated event has no start date"])
@@ -1646,21 +1627,18 @@ final class AgentViewModel: ObservableObject {
                 focusEvent = nil
                 
                 // Reload the schedule to reflect the deletion
-                // Find the event to get its date for reloading
+                // Find the event to get its date for reloading using enum pattern matching
                 if let targetEvent = displayEvents.first(where: { $0.event.id == eventID }) {
                     let eventDay: Date?
-                    if let startDateTime = targetEvent.event.start?.dateTime {
-                        // Timed event
-                        eventDay = calendar.startOfDay(for: startDateTime)
-                    } else if let startDateString = targetEvent.event.start?.date {
-                        // All-day event - parse date string
-                        let dateFormatter = DateFormatter()
-                        dateFormatter.dateFormat = "yyyy-MM-dd"
-                        dateFormatter.timeZone = calendar.timeZone
-                        if let startDate = dateFormatter.date(from: startDateString) {
-                            eventDay = calendar.startOfDay(for: startDate)
-                        } else {
-                            eventDay = nil
+                    if let start = targetEvent.event.start {
+                        switch start.eventTime {
+                        case .timed(let dateTime, _):
+                            eventDay = calendar.startOfDay(for: dateTime)
+                        case .allDay(let dateString):
+                            let dateFormatter = DateFormatter()
+                            dateFormatter.dateFormat = "yyyy-MM-dd"
+                            dateFormatter.timeZone = calendar.timeZone
+                            eventDay = dateFormatter.date(from: dateString).map { calendar.startOfDay(for: $0) }
                         }
                     } else {
                         eventDay = nil

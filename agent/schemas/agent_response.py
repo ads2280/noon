@@ -2,9 +2,9 @@ from __future__ import annotations
 
 from datetime import date as date_type, datetime
 from enum import StrEnum
-from typing import Optional, Union
+from typing import Annotated, Literal, Optional, Union
 
-from pydantic import BaseModel, Field, field_validator, model_validator, ConfigDict, Discriminator
+from pydantic import BaseModel, Discriminator, Field, field_validator, model_validator, ConfigDict
 
 
 class AgentResponseType(StrEnum):
@@ -16,22 +16,29 @@ class AgentResponseType(StrEnum):
     NO_ACTION = "no-action"
 
 
-class DateTimeDict(BaseModel):
-    """Represents either a datetime (for timed events) or a date (for all-day events)."""
-    dateTime: Optional[datetime] = None
-    date: Optional[date_type] = None
+class TimedDateTime(BaseModel):
+    """Represents a timed event with specific start/end times."""
+    type: Literal["timed"] = "timed"
+    dateTime: datetime
     
-    @model_validator(mode='after')
-    def validate_exactly_one_field(self):
-        """Ensure exactly one of dateTime or date is provided."""
-        has_datetime = self.dateTime is not None
-        has_date = self.date is not None
-        
-        if not has_datetime and not has_date:
-            raise ValueError("Exactly one of 'dateTime' or 'date' must be provided")
-        if has_datetime and has_date:
-            raise ValueError("Cannot provide both 'dateTime' and 'date' - use dateTime for timed events, date for all-day events")
-        return self
+    class Config:
+        populate_by_name = True
+
+
+class AllDayDateTime(BaseModel):
+    """Represents an all-day event with date only."""
+    type: Literal["all_day"] = "all_day"
+    date: date_type
+    
+    class Config:
+        populate_by_name = True
+
+
+# Discriminated union for DateTimeDict
+DateTimeDict = Annotated[
+    Union[TimedDateTime, AllDayDateTime],
+    Discriminator("type"),
+]
 
 
 class ShowEventMetadata(BaseModel):

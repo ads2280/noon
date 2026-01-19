@@ -316,12 +316,54 @@ private final class MockCalendarService: CalendarServicing {
 
     func createEvent(accessToken: String, request: CreateEventRequest) async throws -> CalendarCreateEventResponse {
         // Mock implementation - return a mock event
+        let startEventTime: CalendarEvent.EventTime
+        let endEventTime: CalendarEvent.EventTime
+        
+        // Convert BackendEventTime to CalendarEvent.EventTime
+        switch request.start.type {
+        case .timed:
+            if let startDateTime = request.start.dateTime {
+                startEventTime = .timed(dateTime: startDateTime, timeZone: request.start.timeZone)
+            } else {
+                let now = Date()
+                startEventTime = .timed(dateTime: now, timeZone: request.timezone)
+            }
+        case .allDay:
+            if let startDate = request.start.date {
+                startEventTime = .allDay(date: startDate)
+            } else {
+                let formatter = DateFormatter()
+                formatter.dateFormat = "yyyy-MM-dd"
+                formatter.timeZone = TimeZone(secondsFromGMT: 0)
+                startEventTime = .allDay(date: formatter.string(from: Date()))
+            }
+        }
+        
+        switch request.end.type {
+        case .timed:
+            if let endDateTime = request.end.dateTime {
+                endEventTime = .timed(dateTime: endDateTime, timeZone: request.end.timeZone)
+            } else {
+                let now = Date()
+                endEventTime = .timed(dateTime: now.addingTimeInterval(3600), timeZone: request.timezone)
+            }
+        case .allDay:
+            if let endDate = request.end.date {
+                endEventTime = .allDay(date: endDate)
+            } else {
+                let formatter = DateFormatter()
+                formatter.dateFormat = "yyyy-MM-dd"
+                formatter.timeZone = TimeZone(secondsFromGMT: 0)
+                endEventTime = .allDay(date: formatter.string(from: Date().addingTimeInterval(86400)))
+            }
+        }
+        
         let mockEvent = CalendarEvent(
             id: UUID().uuidString,
             title: request.summary,
             description: request.description,
-            start: CalendarEvent.EventDateTime(dateTime: request.start, date: nil, timeZone: request.timezone),
-            end: CalendarEvent.EventDateTime(dateTime: request.end, date: nil, timeZone: request.timezone),
+            start: CalendarEvent.EventDateTime(eventTime: startEventTime),
+            end: CalendarEvent.EventDateTime(eventTime: endEventTime),
             attendees: [],
             createdBy: nil,
             calendarId: request.calendarId,
@@ -369,23 +411,59 @@ private final class MockCalendarService: CalendarServicing {
     ) async throws -> CalendarUpdateEventResponse {
         // Mock implementation - simulate an updated event with any provided fields
         let now = Date()
-        let updatedStart = request.start ?? now
-        let updatedEnd = request.end ?? now.addingTimeInterval(3600)
+        let startEventTime: CalendarEvent.EventTime
+        let endEventTime: CalendarEvent.EventTime
+        
+        if let start = request.start {
+            switch start.type {
+            case .timed:
+                if let dateTime = start.dateTime {
+                    startEventTime = .timed(dateTime: dateTime, timeZone: start.timeZone ?? request.timezone)
+                } else {
+                    startEventTime = .timed(dateTime: now, timeZone: request.timezone)
+                }
+            case .allDay:
+                if let date = start.date {
+                    startEventTime = .allDay(date: date)
+                } else {
+                    let formatter = DateFormatter()
+                    formatter.dateFormat = "yyyy-MM-dd"
+                    formatter.timeZone = TimeZone(secondsFromGMT: 0)
+                    startEventTime = .allDay(date: formatter.string(from: Date()))
+                }
+            }
+        } else {
+            startEventTime = .timed(dateTime: now, timeZone: request.timezone)
+        }
+        
+        if let end = request.end {
+            switch end.type {
+            case .timed:
+                if let dateTime = end.dateTime {
+                    endEventTime = .timed(dateTime: dateTime, timeZone: end.timeZone ?? request.timezone)
+                } else {
+                    endEventTime = .timed(dateTime: now.addingTimeInterval(3600), timeZone: request.timezone)
+                }
+            case .allDay:
+                if let date = end.date {
+                    endEventTime = .allDay(date: date)
+                } else {
+                    let formatter = DateFormatter()
+                    formatter.dateFormat = "yyyy-MM-dd"
+                    formatter.timeZone = TimeZone(secondsFromGMT: 0)
+                    endEventTime = .allDay(date: formatter.string(from: Date().addingTimeInterval(86400)))
+                }
+            }
+        } else {
+            endEventTime = .timed(dateTime: now.addingTimeInterval(3600), timeZone: request.timezone)
+        }
 
         let mockEvent = CalendarEvent(
             id: eventId,
             title: request.summary ?? "Updated Mock Event",
             description: request.description,
-            start: CalendarEvent.EventDateTime(
-                dateTime: updatedStart,
-                date: nil,
-                timeZone: request.timezone
-            ),
-            end: CalendarEvent.EventDateTime(
-                dateTime: updatedEnd,
-                date: nil,
-                timeZone: request.timezone
-            ),
+            start: CalendarEvent.EventDateTime(eventTime: startEventTime),
+            end: CalendarEvent.EventDateTime(eventTime: endEventTime),
             attendees: [],
             createdBy: nil,
             calendarId: calendarId,

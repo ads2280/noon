@@ -124,21 +124,24 @@ struct CalendarEvent: Identifiable, Codable, Hashable, Sendable {
 }
 
 extension CalendarEvent {
-    struct EventDateTime: Codable, Hashable, Sendable {
-        let dateTime: Date?
-        let date: String?
-        let timeZone: String?
-
+    enum EventTime: Codable, Hashable, Sendable {
+        case timed(dateTime: Date, timeZone: String?)
+        case allDay(date: String)
+        
         var isAllDay: Bool {
-            date != nil && dateTime == nil
+            if case .allDay = self {
+                return true
+            }
+            return false
         }
-
+        
         enum CodingKeys: String, CodingKey {
             case dateTime
             case date
             case timeZone
+            case type
         }
-
+        
         private static let fractionalFormatter: ISO8601DateFormatter = {
             let formatter = ISO8601DateFormatter()
             formatter.formatOptions = [
@@ -147,48 +150,111 @@ extension CalendarEvent {
             ]
             return formatter
         }()
-
+        
         private static let fallbackFormatter: ISO8601DateFormatter = {
             let formatter = ISO8601DateFormatter()
             formatter.formatOptions = [.withInternetDateTime]
             return formatter
         }()
-
-        init(dateTime: Date? = nil, date: String? = nil, timeZone: String? = nil) {
-            self.dateTime = dateTime
-            self.date = date
-            self.timeZone = timeZone
-        }
-
+        
         init(from decoder: Decoder) throws {
             let container = try decoder.container(keyedBy: CodingKeys.self)
-            self.timeZone = try container.decodeIfPresent(String.self, forKey: .timeZone)
-
+            
+            // Check if we have dateTime (timed) or date (all-day)
             if let dateTimeString = try container.decodeIfPresent(String.self, forKey: .dateTime) {
-                if let parsed = EventDateTime.fractionalFormatter.date(from: dateTimeString) {
-                    self.dateTime = parsed
+                let dateTime: Date
+                if let parsed = EventTime.fractionalFormatter.date(from: dateTimeString) {
+                    dateTime = parsed
+                } else if let parsed = EventTime.fallbackFormatter.date(from: dateTimeString) {
+                    dateTime = parsed
                 } else {
-                    self.dateTime = EventDateTime.fallbackFormatter.date(from: dateTimeString)
+                    throw DecodingError.dataCorruptedError(
+                        forKey: .dateTime,
+                        in: container,
+                        debugDescription: "Unable to parse dateTime string: \(dateTimeString)"
+                    )
                 }
+                let timeZone = try container.decodeIfPresent(String.self, forKey: .timeZone)
+                self = .timed(dateTime: dateTime, timeZone: timeZone)
+            } else if let dateString = try container.decodeIfPresent(String.self, forKey: .date) {
+                self = .allDay(date: dateString)
             } else {
-                self.dateTime = nil
+                throw DecodingError.dataCorrupted(
+                    DecodingError.Context(
+                        codingPath: decoder.codingPath,
+                        debugDescription: "EventTime must have either dateTime or date field"
+                    )
+                )
             }
-
-            self.date = try container.decodeIfPresent(String.self, forKey: .date)
         }
-
+        
         func encode(to encoder: Encoder) throws {
             var container = encoder.container(keyedBy: CodingKeys.self)
-            if let dateTime {
-                let formatted = EventDateTime.fractionalFormatter.string(from: dateTime)
+            switch self {
+            case .timed(let dateTime, let timeZone):
+                let formatted = EventTime.fractionalFormatter.string(from: dateTime)
                 try container.encode(formatted, forKey: .dateTime)
-            }
-            if let date {
+                if let timeZone = timeZone {
+                    try container.encode(timeZone, forKey: .timeZone)
+                }
+            case .allDay(let date):
                 try container.encode(date, forKey: .date)
             }
-            if let timeZone {
-                try container.encode(timeZone, forKey: .timeZone)
+        }
+    }
+    
+    struct EventDateTime: Codable, Hashable, Sendable {
+        let eventTime: EventTime
+        
+        var isAllDay: Bool {
+            eventTime.isAllDay
+        }
+        
+        var dateTime: Date? {
+            if case .timed(let dateTime, _) = eventTime {
+                return dateTime
             }
+            return nil
+        }
+        
+        var date: String? {
+            if case .allDay(let date) = eventTime {
+                return date
+            }
+            return nil
+        }
+        
+        var timeZone: String? {
+            if case .timed(_, let timeZone) = eventTime {
+                return timeZone
+            }
+            return nil
+        }
+        
+        init(eventTime: EventTime) {
+            self.eventTime = eventTime
+        }
+        
+        init(dateTime: Date? = nil, date: String? = nil, timeZone: String? = nil) {
+            if let dateTime = dateTime {
+                self.eventTime = .timed(dateTime: dateTime, timeZone: timeZone)
+            } else if let date = date {
+                self.eventTime = .allDay(date: date)
+            } else {
+                // Default to all-day with today's date if nothing provided (shouldn't happen in practice)
+                let formatter = DateFormatter()
+                formatter.dateFormat = "yyyy-MM-dd"
+                formatter.timeZone = TimeZone(secondsFromGMT: 0)
+                self.eventTime = .allDay(date: formatter.string(from: Date()))
+            }
+        }
+        
+        init(from decoder: Decoder) throws {
+            self.eventTime = try EventTime(from: decoder)
+        }
+        
+        func encode(to encoder: Encoder) throws {
+            try eventTime.encode(to: encoder)
         }
     }
 

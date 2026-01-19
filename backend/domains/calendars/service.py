@@ -18,6 +18,11 @@ from domains.calendars.providers.google import (
     refresh_access_token,
 )
 from domains.calendars.repository import CalendarRepository
+from domains.calendars.schemas import (
+    AllDayEventTime,
+    EventTime,
+    TimedEventTime,
+)
 from utils.errors import (
     GoogleCalendarServiceError,
     GoogleCalendarUserError,
@@ -200,10 +205,8 @@ class CalendarService:
         user_id: str,
         calendar_id: str,
         summary: str,
-        start: datetime | None = None,
-        end: datetime | None = None,
-        start_date: date | None = None,
-        end_date: date | None = None,
+        start: EventTime,
+        end: EventTime,
         description: str | None = None,
         location: str | None = None,
         timezone_name: str = "UTC",
@@ -214,13 +217,11 @@ class CalendarService:
             user_id: User ID
             calendar_id: Calendar ID
             summary: Event summary/title
-            start: Start datetime for timed events
-            end: End datetime for timed events
-            start_date: Start date for all-day events (mutually exclusive with start)
-            end_date: End date for all-day events (mutually exclusive with end)
+            start: Start time (TimedEventTime or AllDayEventTime)
+            end: End time (TimedEventTime or AllDayEventTime)
             description: Optional description
             location: Optional location
-            timezone_name: Timezone name (only used for timed events)
+            timezone_name: Timezone name (only used for timed events, defaults to UTC)
         """
         contexts, calendars_by_id = await self._prepare_context(user_id)
 
@@ -240,46 +241,38 @@ class CalendarService:
                 f"Account for calendar {calendar_id} not found."
             )
 
-        # Determine if this is an all-day or timed event
-        is_all_day = start_date is not None and end_date is not None
-        is_timed = start is not None and end is not None
-        
-        if not is_all_day and not is_timed:
-            raise GoogleCalendarUserError(
-                "Either (start, end) for timed events or (start_date, end_date) for all-day events must be provided"
-            )
-        if is_all_day and is_timed:
-            raise GoogleCalendarUserError(
-                "Cannot provide both datetime and date fields. Use datetime for timed events, date for all-day events."
-            )
-
-        # Format event data for Google Calendar API
+        # Format event data for Google Calendar API using pattern matching
         event_data: Dict[str, Any] = {
             "summary": summary,
         }
         
-        if is_all_day:
+        if isinstance(start, AllDayEventTime) and isinstance(end, AllDayEventTime):
             # All-day event - use date fields (no timezone)
             event_data["start"] = {
-                "date": start_date.isoformat(),  # Format: "YYYY-MM-DD"
+                "date": start.date.isoformat(),  # Format: "YYYY-MM-DD"
             }
             event_data["end"] = {
-                "date": end_date.isoformat(),  # Format: "YYYY-MM-DD" (exclusive)
+                "date": end.date.isoformat(),  # Format: "YYYY-MM-DD" (exclusive)
             }
-        else:
+        elif isinstance(start, TimedEventTime) and isinstance(end, TimedEventTime):
             # Timed event - use dateTime fields with timezone
-            tz = ZoneInfo(timezone_name)
-            start_dt = start.replace(tzinfo=tz) if start.tzinfo is None else start.astimezone(tz)
-            end_dt = end.replace(tzinfo=tz) if end.tzinfo is None else end.astimezone(tz)
+            tz_name = start.time_zone or timezone_name
+            tz = ZoneInfo(tz_name)
+            start_dt = start.date_time.replace(tzinfo=tz) if start.date_time.tzinfo is None else start.date_time.astimezone(tz)
+            end_dt = end.date_time.replace(tzinfo=tz) if end.date_time.tzinfo is None else end.date_time.astimezone(tz)
             
             event_data["start"] = {
                 "dateTime": start_dt.isoformat(),
-                "timeZone": timezone_name,
+                "timeZone": tz_name,
             }
             event_data["end"] = {
                 "dateTime": end_dt.isoformat(),
-                "timeZone": timezone_name,
+                "timeZone": tz_name,
             }
+        else:
+            raise GoogleCalendarUserError(
+                "Start and end must both be timed or both be all-day events"
+            )
 
         if description:
             event_data["description"] = description
@@ -332,10 +325,8 @@ class CalendarService:
         calendar_id: str,
         event_id: str,
         summary: str | None = None,
-        start: datetime | None = None,
-        end: datetime | None = None,
-        start_date: date | None = None,
-        end_date: date | None = None,
+        start: EventTime | None = None,
+        end: EventTime | None = None,
         description: str | None = None,
         location: str | None = None,
         timezone_name: str = "UTC",
@@ -347,13 +338,11 @@ class CalendarService:
             calendar_id: Calendar ID
             event_id: Event ID
             summary: Optional new summary/title
-            start: Optional new start datetime for timed events
-            end: Optional new end datetime for timed events
-            start_date: Optional new start date for all-day events
-            end_date: Optional new end date for all-day events
+            start: Optional new start time (TimedEventTime or AllDayEventTime)
+            end: Optional new end time (TimedEventTime or AllDayEventTime)
             description: Optional new description
             location: Optional new location
-            timezone_name: Timezone name (only used for timed events)
+            timezone_name: Timezone name (only used for timed events, defaults to UTC)
         """
         contexts, calendars_by_id = await self._prepare_context(user_id)
 
@@ -405,111 +394,91 @@ class CalendarService:
         current_start = current_event.get("start", {})
         current_end = current_event.get("end", {})
 
-        # Determine if updating to all-day or timed event
-        has_datetime = start is not None or end is not None
-        has_date = start_date is not None or end_date is not None
-        
-        if has_datetime and has_date:
-            raise GoogleCalendarUserError(
-                "Cannot provide both datetime and date fields. Use datetime for timed events, date for all-day events."
-            )
-        
-        # Handle start/end updates
-        if has_date:
-            # Updating to all-day event
-            if start_date:
-                event_data["start"] = {"date": start_date.isoformat()}
+        # Handle start/end updates using pattern matching
+        if start is not None and end is not None:
+            # Both start and end provided - use them directly
+            if isinstance(start, AllDayEventTime) and isinstance(end, AllDayEventTime):
+                event_data["start"] = {"date": start.date.isoformat()}
+                event_data["end"] = {"date": end.date.isoformat()}
+            elif isinstance(start, TimedEventTime) and isinstance(end, TimedEventTime):
+                tz_name = start.time_zone or timezone_name
+                tz = ZoneInfo(tz_name)
+                start_dt = start.date_time.replace(tzinfo=tz) if start.date_time.tzinfo is None else start.date_time.astimezone(tz)
+                end_dt = end.date_time.replace(tzinfo=tz) if end.date_time.tzinfo is None else end.date_time.astimezone(tz)
+                event_data["start"] = {
+                    "dateTime": start_dt.isoformat(),
+                    "timeZone": tz_name,
+                }
+                event_data["end"] = {
+                    "dateTime": end_dt.isoformat(),
+                    "timeZone": tz_name,
+                }
             else:
-                # Preserve existing start if not updating
-                if "date" in current_start:
-                    event_data["start"] = {"date": current_start["date"]}
-                elif "dateTime" in current_start:
-                    # Converting from timed to all-day - need end_date too
-                    if not end_date:
-                        raise GoogleCalendarUserError(
-                            "Cannot convert timed event to all-day without end_date"
-                        )
-                    # Use the date part of the datetime
-                    from datetime import datetime as dt
-                    start_dt = dt.fromisoformat(current_start["dateTime"].replace("Z", "+00:00"))
-                    event_data["start"] = {"date": start_dt.date().isoformat()}
-            
-            if end_date:
-                event_data["end"] = {"date": end_date.isoformat()}
-            else:
-                # Preserve existing end if not updating
+                raise GoogleCalendarUserError(
+                    "Start and end must both be timed or both be all-day events"
+                )
+        elif start is not None:
+            # Only start provided - need to handle conversion
+            if isinstance(start, AllDayEventTime):
+                event_data["start"] = {"date": start.date.isoformat()}
+                # Preserve existing end, converting if needed
                 if "date" in current_end:
                     event_data["end"] = {"date": current_end["date"]}
                 elif "dateTime" in current_end:
-                    # Converting from timed to all-day - need start_date too
-                    if not start_date:
-                        raise GoogleCalendarUserError(
-                            "Cannot convert timed event to all-day without start_date"
-                        )
-                    # Use the date part of the datetime
-                    from datetime import datetime as dt
-                    end_dt = dt.fromisoformat(current_end["dateTime"].replace("Z", "+00:00"))
-                    event_data["end"] = {"date": end_dt.date().isoformat()}
-        elif has_datetime:
-            # Updating to timed event
-            tz = ZoneInfo(timezone_name)
-            # Start: update if provided, otherwise preserve existing (required by Google Calendar API)
-            if start is not None:
-                start_dt = start.replace(tzinfo=tz) if start.tzinfo is None else start.astimezone(tz)
+                    # Converting from timed to all-day - need end too
+                    raise GoogleCalendarUserError(
+                        "Cannot convert timed event to all-day without providing end date"
+                    )
+            elif isinstance(start, TimedEventTime):
+                tz_name = start.time_zone or timezone_name
+                tz = ZoneInfo(tz_name)
+                start_dt = start.date_time.replace(tzinfo=tz) if start.date_time.tzinfo is None else start.date_time.astimezone(tz)
                 event_data["start"] = {
                     "dateTime": start_dt.isoformat(),
-                    "timeZone": timezone_name,
+                    "timeZone": tz_name,
                 }
-            else:
-                # Preserve existing start
-                if "dateTime" in current_start:
-                    event_data["start"] = {
-                        "dateTime": current_start["dateTime"],
-                        "timeZone": current_start.get("timeZone", timezone_name),
-                    }
-                elif "date" in current_start:
-                    # Converting from all-day to timed - need end too
-                    if end is None:
-                        raise GoogleCalendarUserError(
-                            "Cannot convert all-day event to timed without end datetime"
-                        )
-                    # Use the date as start of day in the timezone
-                    from datetime import datetime as dt
-                    start_date_obj = date.fromisoformat(current_start["date"])
-                    start_dt = dt.combine(start_date_obj, dt.min.time()).replace(tzinfo=tz)
-                    event_data["start"] = {
-                        "dateTime": start_dt.isoformat(),
-                        "timeZone": timezone_name,
-                    }
-
-            # End: update if provided, otherwise preserve existing (required by Google Calendar API)
-            if end is not None:
-                end_dt = end.replace(tzinfo=tz) if end.tzinfo is None else end.astimezone(tz)
-                event_data["end"] = {
-                    "dateTime": end_dt.isoformat(),
-                    "timeZone": timezone_name,
-                }
-            else:
                 # Preserve existing end
                 if "dateTime" in current_end:
                     event_data["end"] = {
                         "dateTime": current_end["dateTime"],
-                        "timeZone": current_end.get("timeZone", timezone_name),
+                        "timeZone": current_end.get("timeZone", tz_name),
                     }
                 elif "date" in current_end:
-                    # Converting from all-day to timed - need start too
-                    if start is None:
-                        raise GoogleCalendarUserError(
-                            "Cannot convert all-day event to timed without start datetime"
-                        )
-                    # Use the date as start of day in the timezone
-                    from datetime import datetime as dt
-                    end_date_obj = date.fromisoformat(current_end["date"])
-                    end_dt = dt.combine(end_date_obj, dt.min.time()).replace(tzinfo=tz)
-                    event_data["end"] = {
-                        "dateTime": end_dt.isoformat(),
-                        "timeZone": timezone_name,
+                    # Converting from all-day to timed - need end too
+                    raise GoogleCalendarUserError(
+                        "Cannot convert all-day event to timed without providing end datetime"
+                    )
+        elif end is not None:
+            # Only end provided - need to handle conversion
+            if isinstance(end, AllDayEventTime):
+                event_data["end"] = {"date": end.date.isoformat()}
+                # Preserve existing start, converting if needed
+                if "date" in current_start:
+                    event_data["start"] = {"date": current_start["date"]}
+                elif "dateTime" in current_start:
+                    # Converting from timed to all-day - need start too
+                    raise GoogleCalendarUserError(
+                        "Cannot convert timed event to all-day without providing start date"
+                    )
+            elif isinstance(end, TimedEventTime):
+                tz_name = end.time_zone or timezone_name
+                tz = ZoneInfo(tz_name)
+                end_dt = end.date_time.replace(tzinfo=tz) if end.date_time.tzinfo is None else end.date_time.astimezone(tz)
+                event_data["end"] = {
+                    "dateTime": end_dt.isoformat(),
+                    "timeZone": tz_name,
+                }
+                # Preserve existing start
+                if "dateTime" in current_start:
+                    event_data["start"] = {
+                        "dateTime": current_start["dateTime"],
+                        "timeZone": current_start.get("timeZone", tz_name),
                     }
+                elif "date" in current_start:
+                    # Converting from all-day to timed - need start too
+                    raise GoogleCalendarUserError(
+                        "Cannot convert all-day event to timed without providing start datetime"
+                    )
         else:
             # No start/end updates - preserve existing format
             if "dateTime" in current_start:
