@@ -55,12 +55,12 @@ struct ScheduleEventCard: View {
         }
         
         // If calendar color is provided, use it with appropriate opacity
-        // Make highlight/update styles lighter (lower opacity)
+        // Make highlight/update styles more prominent (higher opacity for more drastic change)
         // Make destructive style darker (higher opacity)
         if let calendarColor = calendarColor {
             let opacity: CGFloat
             if style == .highlight || style == .update {
-                opacity = 0.12
+                opacity = 0.22  // Increased from 0.12 for more drastic background color change
             } else if style == .destructive {
                 opacity = 0.3  // Darker for destructive style
             } else {
@@ -93,38 +93,43 @@ struct ScheduleEventCard: View {
 
         let shadowConfiguration = shadowAttributes
 
-        shape
-            .fill(ColorPalette.Surface.background)
-            .overlay {
-                shape.fill(backgroundStyle)
-            }
-            .overlay(alignment: .topLeading) {
-                GeometryReader { proxy in
-                    let metrics = contentMetrics(for: proxy.size.height)
-
-                    Text(title)
-                        .font(.caption.weight(.semibold))
-                        .foregroundStyle(textColor)
-                        .lineLimit(metrics.maxLines)
-                        .minimumScaleFactor(metrics.maxLines == 1 ? metrics.fontScale : 1.0)
-                        .fixedSize(horizontal: false, vertical: metrics.maxLines != 1)
-                        .frame(maxWidth: .infinity, alignment: .topLeading)
-                        .padding(.horizontal, metrics.horizontalPadding)
-                        .padding(.top, metrics.topPadding)
-                        .padding(.bottom, metrics.bottomPadding)
-                        .frame(width: proxy.size.width, height: proxy.size.height, alignment: .topLeading)
+        ZStack {
+            // Glow layer - appears behind the card
+            glowOverlay
+            
+            // Card layers
+            shape
+                .fill(ColorPalette.Surface.background)
+                .overlay {
+                    shape.fill(backgroundStyle)
                 }
-                .clipShape(shape)
-            }
-            .overlay { glowOverlay }
-            .overlay { borderOverlay }
-            .overlay { crosshatchOverlay }
-            .shadow(
-                color: shadowConfiguration.color,
-                radius: shadowConfiguration.radius,
-                x: shadowConfiguration.x,
-                y: shadowConfiguration.y
-            )
+                .overlay(alignment: .topLeading) {
+                    GeometryReader { proxy in
+                        let metrics = contentMetrics(for: proxy.size.height)
+
+                        Text(title)
+                            .font(.caption.weight(.semibold))
+                            .foregroundStyle(textColor)
+                            .lineLimit(metrics.maxLines)
+                            .minimumScaleFactor(metrics.maxLines == 1 ? metrics.fontScale : 1.0)
+                            .fixedSize(horizontal: false, vertical: metrics.maxLines != 1)
+                            .frame(maxWidth: .infinity, alignment: .topLeading)
+                            .padding(.horizontal, metrics.horizontalPadding)
+                            .padding(.top, metrics.topPadding)
+                            .padding(.bottom, metrics.bottomPadding)
+                            .frame(width: proxy.size.width, height: proxy.size.height, alignment: .topLeading)
+                    }
+                    .clipShape(shape)
+                }
+                .overlay { borderOverlay }
+                .overlay { crosshatchOverlay }
+        }
+        .shadow(
+            color: shadowConfiguration.color,
+            radius: shadowConfiguration.radius,
+            x: shadowConfiguration.x,
+            y: shadowConfiguration.y
+        )
     }
 
     private var shadowAttributes: (color: Color, radius: CGFloat, x: CGFloat, y: CGFloat) {
@@ -194,13 +199,18 @@ private extension ScheduleEventCard {
     
     @ViewBuilder
     var glowOverlay: some View {
-        // Add glow effect for highlight and update styles
-        if (style == .highlight || style == .update), let calendarColor = calendarColor {
+        // Add glow effect for new, highlight, and update styles
+        // This appears behind the card, creating a glow effect around the edges
+        if (style == .new || style == .highlight || style == .update), let calendarColor = calendarColor {
             let shape = RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
-            // Create an outer glow effect using a blurred stroke
+            // Create an outer glow effect using a blurred stroke with increased intensity
+            // The glow extends beyond the card bounds and appears behind it
             shape
-                .stroke(calendarColor.opacity(0.5), lineWidth: 3)
-                .blur(radius: 6)
+                .stroke(calendarColor.opacity(0.75), lineWidth: 4)  // Increased opacity from 0.5 to 0.75, lineWidth from 3 to 4
+                .blur(radius: 8)  // Increased blur radius from 6 to 8 for more intense glow
+        } else {
+            // Empty view when glow is not needed
+            Color.clear
         }
     }
     
@@ -214,7 +224,7 @@ private extension ScheduleEventCard {
             
             GeometryReader { geometry in
                 let size = geometry.size
-                let lineSpacing: CGFloat = 4
+                let lineSpacing: CGFloat = 7  // Increased spacing for a more open crosshatch pattern
                 let lineWidth: CGFloat = 1
                 // Lines at 45 degrees: slope = 1 (going from bottom-left to top-right)
                 // In screen coordinates, this means: y = -x + c (since y increases downward)
