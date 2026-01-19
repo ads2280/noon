@@ -23,6 +23,9 @@ struct NDayScheduleView: View {
     private let horizontalEventInset: CGFloat = 5
     private let verticalEventInset: CGFloat = 2
     private let minimumEventHeight: CGFloat = 8
+    // Overlap layout
+    private let overlapFractionHorizontal: CGFloat = 0.2
+    private let minimumBaseColumnWidth: CGFloat = 70
     @State private var scrollViewProxy: ScrollViewProxy?
     @State private var lastScrolledFocusEventID: String?
     @State private var hasScrolledToNoon: Bool = false
@@ -345,37 +348,18 @@ struct NDayScheduleView: View {
                 }
             }
 
-            
-            // Render timed segment cards for each day column
-            let timedSegments = segmentCards.filter { !$0.isAllDay }
-            ForEach(Array(dates.enumerated()), id: \.element) { dayIndex, day in
-                let daySegments = timedSegments.filter { calendar.isDate($0.day, inSameDayAs: day) }
-                let columnLeading = columnLeadings[dayIndex]
-                
-                // When n=1, use totalEventWidth (which equals gridWidth) to match ScheduleView exactly
-                let dayColWidth = numberOfDays == 1 ? totalEventWidth : dayColumnWidth
-                let eventWidth = dayColWidth - horizontalEventInset
-                let centerX = numberOfDays == 1 ? gridLeading + dayColWidth / 2 : columnLeading + eventWidth / 2
-                
-                ForEach(daySegments) { segment in
-                    if let layout = layoutInfo(for: segment, focusEvent: focusEvent) {
-                        let eventHeight = max((hourHeight * CGFloat(layout.durationHours)) - verticalEventInset, minimumEventHeight)
-                        let topPosition = timelineTopInset + hourHeight * CGFloat(layout.startHour)
-                        let centerY = topPosition + eventHeight / 2
-
-                        let calendarColor = segment.event.event.calendarColor.flatMap { Color.fromHex($0) }
-
-                        ScheduleEventCard(
-                            title: layout.title,
-                            cornerRadius: cornerRadius,
-                            style: layout.style,
-                            calendarColor: calendarColor
-                        )
-                        .frame(width: eventWidth, height: eventHeight, alignment: .top)
-                        .position(x: centerX, y: centerY)
-                    }
-                }
-            }
+            timedEventsLayer(
+                segmentCards: segmentCards,
+                dates: dates,
+                columnLeadings: columnLeadings,
+                totalEventWidth: totalEventWidth,
+                gridLeading: gridLeading,
+                dayColumnWidth: dayColumnWidth,
+                hourHeight: hourHeight,
+                timelineTopInset: timelineTopInset,
+                focusEvent: focusEvent,
+                cornerRadius: cornerRadius
+            )
         }
         
         // Calculate padding to maintain consistent spacing between schedule bottom and overlay top
@@ -876,6 +860,11 @@ extension Array where Element == Int {
 }
 
 private extension NDayScheduleView {
+    struct ColumnLayoutInfo {
+        let columnIndex: Int
+        let columnCount: Int
+    }
+    
     struct EventSegmentCard: Identifiable {
         let id: String  // Unique per segment: "\(event.id)-\(dayIndex)" for tracking
         let event: DisplayEvent  // Original event
@@ -901,6 +890,305 @@ private extension NDayScheduleView {
         let timeRange: String
         let shouldShowTimeRange: Bool
         let style: ScheduleEventCard.Style
+    }
+    
+    // MARK: - Timed Events Layout Layer
+    
+    @ViewBuilder
+    func timedEventsLayer(
+        segmentCards: [EventSegmentCard],
+        dates: [Date],
+        columnLeadings: [CGFloat],
+        totalEventWidth: CGFloat,
+        gridLeading: CGFloat,
+        dayColumnWidth: CGFloat,
+        hourHeight: CGFloat,
+        timelineTopInset: CGFloat,
+        focusEvent: ScheduleFocusEvent?,
+        cornerRadius: CGFloat
+    ) -> some View {
+        let timedSegments = segmentCards.filter { !$0.isAllDay }
+        
+        ForEach(Array(dates.enumerated()), id: \.element) { dayIndex, day in
+            dayTimedEventsLayer(
+                dayIndex: dayIndex,
+                day: day,
+                timedSegments: timedSegments,
+                columnLeading: columnLeadings[dayIndex],
+                totalEventWidth: totalEventWidth,
+                gridLeading: gridLeading,
+                dayColumnWidth: dayColumnWidth,
+                hourHeight: hourHeight,
+                timelineTopInset: timelineTopInset,
+                focusEvent: focusEvent,
+                cornerRadius: cornerRadius
+            )
+        }
+    }
+    
+    @ViewBuilder
+    private func dayTimedEventsLayer(
+        dayIndex: Int,
+        day: Date,
+        timedSegments: [EventSegmentCard],
+        columnLeading: CGFloat,
+        totalEventWidth: CGFloat,
+        gridLeading: CGFloat,
+        dayColumnWidth: CGFloat,
+        hourHeight: CGFloat,
+        timelineTopInset: CGFloat,
+        focusEvent: ScheduleFocusEvent?,
+        cornerRadius: CGFloat
+    ) -> some View {
+        let daySegments = timedSegments.filter { calendar.isDate($0.day, inSameDayAs: day) }
+        let dayColWidth = numberOfDays == 1 ? totalEventWidth : dayColumnWidth
+        let columnLayout = computeColumnLayout(for: daySegments)
+        let orderedDaySegments = orderedSegmentsForDay(daySegments, columnLayout: columnLayout)
+        
+        ForEach(Array(orderedDaySegments.enumerated()), id: \.element.id) { _, segment in
+            segmentEventCard(
+                segment: segment,
+                columnLayout: columnLayout,
+                dayColWidth: dayColWidth,
+                columnLeading: columnLeading,
+                gridLeading: gridLeading,
+                hourHeight: hourHeight,
+                timelineTopInset: timelineTopInset,
+                focusEvent: focusEvent,
+                cornerRadius: cornerRadius
+            )
+        }
+    }
+    
+    @ViewBuilder
+    private func segmentEventCard(
+        segment: EventSegmentCard,
+        columnLayout: [String: ColumnLayoutInfo],
+        dayColWidth: CGFloat,
+        columnLeading: CGFloat,
+        gridLeading: CGFloat,
+        hourHeight: CGFloat,
+        timelineTopInset: CGFloat,
+        focusEvent: ScheduleFocusEvent?,
+        cornerRadius: CGFloat
+    ) -> some View {
+        if let layout = layoutInfo(for: segment, focusEvent: focusEvent) {
+            let eventHeight = max((hourHeight * CGFloat(layout.durationHours)) - verticalEventInset, minimumEventHeight)
+            let topPosition = timelineTopInset + hourHeight * CGFloat(layout.startHour)
+            let centerY = topPosition + eventHeight / 2
+            
+            let columnInfo = columnLayout[segment.id]
+            let columnCount = max(1, columnInfo?.columnCount ?? 1)
+            let columnIndex = columnInfo?.columnIndex ?? 0
+            
+            let (eventWidth, centerX) = computeEventDimensions(
+                columnCount: columnCount,
+                columnIndex: columnIndex,
+                dayColWidth: dayColWidth,
+                columnLeading: columnLeading,
+                gridLeading: gridLeading
+            )
+            
+            let calendarColor = segment.event.event.calendarColor.flatMap { Color.fromHex($0) }
+            
+            ScheduleEventCard(
+                title: layout.title,
+                cornerRadius: cornerRadius,
+                style: layout.style,
+                calendarColor: calendarColor
+            )
+            .frame(width: eventWidth, height: eventHeight, alignment: .top)
+            .position(x: centerX, y: centerY)
+        }
+    }
+    
+    private func computeEventDimensions(
+        columnCount: Int,
+        columnIndex: Int,
+        dayColWidth: CGFloat,
+        columnLeading: CGFloat,
+        gridLeading: CGFloat
+    ) -> (width: CGFloat, centerX: CGFloat) {
+        if columnCount == 1 {
+            let singleEventWidth = dayColWidth - horizontalEventInset
+            let centerX = numberOfDays == 1
+                ? gridLeading + dayColWidth / 2
+                : columnLeading + singleEventWidth / 2
+            return (singleEventWidth, centerX)
+        } else {
+            let baseColumnWidth = dayColWidth / CGFloat(columnCount)
+            var overlapFraction = overlapFractionHorizontal
+            if baseColumnWidth < minimumBaseColumnWidth {
+                let scale = max(0.0, baseColumnWidth / minimumBaseColumnWidth)
+                overlapFraction = overlapFractionHorizontal * scale
+            }
+            let computedEventWidth = baseColumnWidth * (1.0 + overlapFraction)
+            let originX = numberOfDays == 1 ? gridLeading : columnLeading
+            
+            // Compute tentative center based on column index
+            let tentativeLeft = originX + baseColumnWidth * CGFloat(columnIndex)
+            let tentativeCenter = tentativeLeft + computedEventWidth / 2
+            
+            // Enforce a fixed right padding inside the day column so the card
+            // never encroaches into the next day column.
+            let maxRightEdge = originX + dayColWidth - horizontalEventInset
+            let maxCenter = maxRightEdge - computedEventWidth / 2
+            let centerX = min(tentativeCenter, maxCenter)
+            
+            return (computedEventWidth, centerX)
+        }
+    }
+    
+    // MARK: - Overlap Column Layout
+    
+    /// Computes an overlap-aware column layout for a day's timed segments.
+    /// Returns a dictionary keyed by `EventSegmentCard.id` containing column index and total column count
+    /// for the cluster that segment belongs to.
+    func computeColumnLayout(for segments: [EventSegmentCard]) -> [String: ColumnLayoutInfo] {
+        var layout: [String: ColumnLayoutInfo] = [:]
+        guard !segments.isEmpty else { return layout }
+        
+        // Sort by start time (fallback to end time) to create stable clusters
+        let sorted = segments.sorted { lhs, rhs in
+            let lhsStart = lhs.startTime ?? lhs.endTime ?? Date.distantPast
+            let rhsStart = rhs.startTime ?? rhs.endTime ?? Date.distantPast
+            if lhsStart != rhsStart {
+                return lhsStart < rhsStart
+            }
+            let lhsEnd = lhs.endTime ?? lhs.startTime ?? Date.distantPast
+            let rhsEnd = rhs.endTime ?? rhs.startTime ?? Date.distantPast
+            return lhsEnd < rhsEnd
+        }
+        
+        // Build clusters of overlapping segments
+        var currentCluster: [EventSegmentCard] = []
+        var currentClusterEnd: Date? = nil
+        
+        func finalizeCurrentCluster() {
+            guard !currentCluster.isEmpty else { return }
+            let assignments = assignColumns(to: currentCluster)
+            for (id, info) in assignments {
+                layout[id] = info
+            }
+            currentCluster.removeAll(keepingCapacity: true)
+            currentClusterEnd = nil
+        }
+        
+        for segment in sorted {
+            guard let segStart = segment.startTime ?? segment.endTime,
+                  let segEnd = segment.endTime ?? segment.startTime else {
+                continue
+            }
+            
+            if currentCluster.isEmpty {
+                currentCluster = [segment]
+                currentClusterEnd = segEnd
+            } else if let clusterEnd = currentClusterEnd, segStart < clusterEnd {
+                // Overlaps current cluster, extend it
+                currentCluster.append(segment)
+                if segEnd > clusterEnd {
+                    currentClusterEnd = segEnd
+                }
+            } else {
+                // Does not overlap current cluster, finalize and start a new one
+                finalizeCurrentCluster()
+                currentCluster = [segment]
+                currentClusterEnd = segEnd
+            }
+        }
+        
+        // Finalize last cluster
+        finalizeCurrentCluster()
+        
+        return layout
+    }
+    
+    /// Assigns segments in a cluster to columns using a greedy interval-coloring algorithm.
+    /// Returns a dictionary keyed by segment id with its column index and total column count.
+    private func assignColumns(to cluster: [EventSegmentCard]) -> [String: ColumnLayoutInfo] {
+        guard !cluster.isEmpty else { return [:] }
+        
+        // Sort cluster by start time for deterministic assignment
+        let sortedCluster = cluster.sorted { lhs, rhs in
+            let lhsStart = lhs.startTime ?? lhs.endTime ?? Date.distantPast
+            let rhsStart = rhs.startTime ?? rhs.endTime ?? Date.distantPast
+            if lhsStart != rhsStart {
+                return lhsStart < rhsStart
+            }
+            let lhsEnd = lhs.endTime ?? lhs.startTime ?? Date.distantPast
+            let rhsEnd = rhs.endTime ?? rhs.startTime ?? Date.distantPast
+            return lhsEnd < rhsEnd
+        }
+        
+        // Each column tracks the latest end time of the segments assigned to it
+        var columnEndTimes: [Date] = []
+        var columnAssignments: [String: Int] = [:]
+        
+        for segment in sortedCluster {
+            guard let segStart = segment.startTime ?? segment.endTime,
+                  let segEnd = segment.endTime ?? segment.startTime else {
+                continue
+            }
+            
+            var assignedColumnIndex: Int?
+            
+            // Try to place segment in the first column that has ended before this segment starts
+            for (index, endTime) in columnEndTimes.enumerated() {
+                if segStart >= endTime {
+                    assignedColumnIndex = index
+                    columnEndTimes[index] = segEnd
+                    break
+                }
+            }
+            
+            // If no existing column is free, create a new one
+            if assignedColumnIndex == nil {
+                columnEndTimes.append(segEnd)
+                assignedColumnIndex = columnEndTimes.count - 1
+            }
+            
+            if let index = assignedColumnIndex {
+                columnAssignments[segment.id] = index
+            }
+        }
+        
+        let totalColumns = max(1, columnEndTimes.count)
+        var result: [String: ColumnLayoutInfo] = [:]
+        for (id, index) in columnAssignments {
+            result[id] = ColumnLayoutInfo(columnIndex: index, columnCount: totalColumns)
+        }
+        
+        return result
+    }
+    
+    /// Orders segments for a day so that segments with higher columnIndex (rightmost)
+    /// are drawn later and appear on top, with stable ordering within a column.
+    private func orderedSegmentsForDay(
+        _ segments: [EventSegmentCard],
+        columnLayout: [String: ColumnLayoutInfo]
+    ) -> [EventSegmentCard] {
+        return segments.sorted { lhs, rhs in
+            let lhsInfo = columnLayout[lhs.id]
+            let rhsInfo = columnLayout[rhs.id]
+            
+            let lhsColumn = lhsInfo?.columnIndex ?? 0
+            let rhsColumn = rhsInfo?.columnIndex ?? 0
+            
+            if lhsColumn != rhsColumn {
+                return lhsColumn < rhsColumn
+            }
+            
+            // Within the same column, sort by start time, then end time for determinism
+            let lhsStart = lhs.startTime ?? lhs.endTime ?? Date.distantPast
+            let rhsStart = rhs.startTime ?? rhs.endTime ?? Date.distantPast
+            if lhsStart != rhsStart {
+                return lhsStart < rhsStart
+            }
+            
+            let lhsEnd = lhs.endTime ?? lhs.startTime ?? Date.distantPast
+            let rhsEnd = rhs.endTime ?? rhs.startTime ?? Date.distantPast
+            return lhsEnd < rhsEnd
+        }
     }
     
     // MARK: - Segment Card Generation
