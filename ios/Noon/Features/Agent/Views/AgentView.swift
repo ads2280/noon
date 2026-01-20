@@ -40,6 +40,10 @@ struct AgentView: View {
                 .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
                 .ignoresSafeArea(edges: .bottom) // Extend schedule to bottom of screen
                 .transition(.opacity.combined(with: .move(edge: .top)))
+            } else if viewModel.isLoadingSchedule {
+                ProgressView()
+                    .frame(maxWidth: .infinity)
+                    .padding(.top, 100)
             }
         }
         .overlay(alignment: .top) {
