@@ -49,9 +49,9 @@ struct ScheduleEventCard: View {
     private static let horizontalPaddingValue: CGFloat = 8
 
     private var backgroundStyle: AnyShapeStyle {
-        // For new style, always use white/system background
+        // For new style, use system background (white in light mode, black in dark mode)
         if style == .new {
-            return AnyShapeStyle(Color.white)
+            return AnyShapeStyle(ColorPalette.Surface.background)
         }
         
         // If calendar color is provided, use it with appropriate opacity

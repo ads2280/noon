@@ -184,9 +184,9 @@ enum ColorPalette {
                 alpha: 0.88
             ),
             dark: UIColor(
-                displayP3Red: 0.16,
-                green: 0.18,
-                blue: 0.22,
+                displayP3Red: 0.32,
+                green: 0.34,
+                blue: 0.38,
                 alpha: 0.9
             )
         )
