@@ -239,7 +239,10 @@ struct NDayScheduleView: View {
         }
         
         let style: ScheduleEventCard.Style
-        if let focusEvent = self.focusEvent, focusEvent.eventID == segment.eventID {
+        // Check if this event is selected for details modal - if so, use highlight style
+        if let selectedEvent = selectedEvent, selectedEvent.id == segment.eventID {
+            style = .highlight
+        } else if let focusEvent = self.focusEvent, focusEvent.eventID == segment.eventID {
             style = cardStyle(for: focusEvent.style)
         } else {
             style = cardStyle(for: segment.event.style)
@@ -1001,7 +1004,7 @@ private extension NDayScheduleView {
         focusEvent: ScheduleFocusEvent?,
         cornerRadius: CGFloat
     ) -> some View {
-        if let layout = layoutInfo(for: segment, focusEvent: focusEvent) {
+        if let layout = layoutInfo(for: segment, focusEvent: focusEvent, selectedEvent: selectedEvent) {
             let eventHeight = max((hourHeight * CGFloat(layout.durationHours)) - verticalEventInset, minimumEventHeight)
             let topPosition = timelineTopInset + hourHeight * CGFloat(layout.startHour)
             let centerY = topPosition + eventHeight / 2
@@ -1348,7 +1351,7 @@ private extension NDayScheduleView {
         )
     }
 
-    func layoutInfo(for segment: EventSegmentCard, focusEvent: ScheduleFocusEvent?) -> EventLayout? {
+    func layoutInfo(for segment: EventSegmentCard, focusEvent: ScheduleFocusEvent?, selectedEvent: CalendarEvent?) -> EventLayout? {
         // All-day events are handled separately, not in timeline
         guard !segment.isAllDay else { return nil }
         
@@ -1389,7 +1392,10 @@ private extension NDayScheduleView {
         let shouldShowTimeRange = duration >= 1.0
 
         let style: ScheduleEventCard.Style
-        if let focusEvent, focusEvent.eventID == segment.eventID {
+        // Check if this event is selected for details modal - if so, use highlight style
+        if let selectedEvent = selectedEvent, selectedEvent.id == segment.eventID {
+            style = .highlight
+        } else if let focusEvent = focusEvent, focusEvent.eventID == segment.eventID {
             style = cardStyle(for: focusEvent.style)
         } else {
             style = cardStyle(for: segment.event.style)
