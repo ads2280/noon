@@ -111,15 +111,21 @@ struct AgentModal: View {
             .frame(maxWidth: .infinity)
             
         case .thinking(let text):
-            Text(text)
-                .font(.system(size: 14, weight: .regular))
-                .foregroundColor(ColorPalette.Text.secondary)
-                .lineLimit(1)
-                .truncationMode(.tail)
-                .frame(maxWidth: .infinity)
-                .multilineTextAlignment(.center)
-                .padding(.horizontal, horizontalPadding)
-                .padding(.vertical, verticalPadding)
+            HStack(spacing: 12) {
+                ProgressView()
+                    .progressViewStyle(.circular)
+                    .scaleEffect(0.8)
+                    .tint(ColorPalette.Text.secondary)
+                
+                Text("\"\(text)\"")
+                    .font(.system(size: 14, weight: .regular))
+                    .foregroundColor(ColorPalette.Text.secondary)
+                    .lineLimit(1)
+                    .truncationMode(.tail)
+            }
+            .frame(maxWidth: .infinity)
+            .padding(.horizontal, horizontalPadding)
+            .padding(.vertical, verticalPadding)
             
         case .notice(let message):
             Text(message)
