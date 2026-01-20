@@ -83,17 +83,10 @@ def _build_relative_dates_cheat_sheet(current_datetime: datetime, timezone: str)
     today = current_datetime.date()
     current_hour = current_datetime.hour
     is_early_morning = current_hour < 4
+    is_weekday = today.weekday() < 5  # Monday=0 to Friday=4 are weekdays
     
     items = []
     items.append("RELATIVE DATES CHEAT SHEET:")
-    
-    # Get timezone offset for ISO string formatting
-    offset = current_datetime.strftime("%z")
-    if offset:
-        # Format offset as -08:00 instead of -0800
-        offset_formatted = f"{offset[:3]}:{offset[3:]}"
-    else:
-        offset_formatted = "+00:00"
     
     # Helper function to format date
     def format_date(d: datetime.date) -> str:
@@ -118,112 +111,118 @@ def _build_relative_dates_cheat_sheet(current_datetime: datetime, timezone: str)
     
     # Tomorrow
     if is_early_morning:
-        tomorrow_date = today  # Later today after they sleep
-        tomorrow_note = f" (NOTE: Since it is super early ({current_hour}:00 AM), tomorrow likely means later today after they sleep, not the next calendar day)"
+        tomorrow_date = today  # User hasn't slept yet, so "tomorrow" means today
+        tomorrow_note = f" (NOTE: Assuming user hasn't slept yet this night)"
     else:
         tomorrow_date = today + timedelta(days=1)
         tomorrow_note = ""
     items.append(f'- "tomorrow": {format_date(tomorrow_date)} {format_day_range(tomorrow_date)}{tomorrow_note}')
     
-    # Day after tomorrow
+    # Day after tomorrow (references "tomorrow")
     if is_early_morning:
-        day_after_date = today + timedelta(days=1)  # Tomorrow after they sleep two nights
-        day_after_note = f" (NOTE: Since it is super early ({current_hour}:00 AM), day after tomorrow likely means tomorrow after they sleep two nights, not two calendar days from now)"
+        # "Day after tomorrow" means tomorrow (next calendar day) when it's early morning
+        day_after_date = today + timedelta(days=1)  # Tomorrow
+        day_after_note = f" (NOTE: Assuming user hasn't slept yet this night)"
     else:
-        day_after_date = today + timedelta(days=2)
+        day_after_date = tomorrow_date + timedelta(days=1)
         day_after_note = ""
     items.append(f'- "day after tomorrow" / "day after next": {format_date(day_after_date)} {format_day_range(day_after_date)}{day_after_note}')
     
-    # Days of week (next occurrence)
+    # Days of week (X in 1-7 days)
     weekday_names = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"]
     for i, day_name in enumerate(weekday_names):
-        # Find next occurrence of this weekday
+        # Find next occurrence of this weekday (1-7 days ahead)
         days_ahead = (i - today.weekday()) % 7
         if days_ahead == 0:
             days_ahead = 7  # Next week's occurrence
         next_date = today + timedelta(days=days_ahead)
         items.append(f'- "{day_name}": {format_date(next_date)} {format_day_range(next_date)}')
     
-    # Next [day] (that weekday of next week)
-    for i, day_name in enumerate(weekday_names):
-        # Find this weekday of next week
-        days_ahead = (i - today.weekday()) % 7
-        if days_ahead == 0:
-            days_ahead = 7
-        # Add 7 more days to get next week's occurrence
-        next_week_date = today + timedelta(days=days_ahead + 7)
-        items.append(f'- "next {day_name}": {format_date(next_week_date)} {format_day_range(next_week_date)}')
-    
-    # This week (Monday to Sunday)
-    # If it's Saturday or Sunday, "this week" means the week starting on the upcoming Monday
-    # Otherwise, it's the current week
-    days_since_monday = today.weekday()
-    if today.weekday() >= 5:  # Saturday (5) or Sunday (6)
-        # On weekend, "this week" refers to the week starting on the upcoming Monday
-        days_until_monday = (7 - days_since_monday) % 7
-        if days_until_monday == 0:
-            days_until_monday = 7  # Next Monday
-        week_start = today + timedelta(days=days_until_monday)
-    else:
-        # On weekdays, "this week" is the current week
-        week_start = today - timedelta(days=days_since_monday)
-    week_end = week_start + timedelta(days=6)
-    items.append(f'- "this week": {format_date(week_start)} - {format_date(week_end)} {format_date_range(week_start, week_end)}')
-    
-    # Next week
-    # If it's Saturday or Sunday, "next week" is the week after the upcoming week
-    # Otherwise, it's the week after the current week
-    next_week_start = week_start + timedelta(days=7)
-    next_week_end = next_week_start + timedelta(days=6)
-    items.append(f'- "next week": {format_date(next_week_start)} - {format_date(next_week_end)} {format_date_range(next_week_start, next_week_end)}')
-    
-    # Week after next
-    week_after_next_start = week_start + timedelta(days=14)
-    week_after_next_end = week_after_next_start + timedelta(days=6)
-    items.append(f'- "week after next": {format_date(week_after_next_start)} - {format_date(week_after_next_end)} {format_date_range(week_after_next_start, week_after_next_end)}')
-    
-    # This weekend (Saturday-Sunday)
-    # Find the next Saturday from today
-    days_until_saturday = (5 - today.weekday()) % 7
-    if days_until_saturday == 0:
-        # Today is Saturday, use this weekend
-        this_weekend_sat = today
-    else:
-        # Find next Saturday
+    # Calculate base values: this week, this weekend, next week, next weekend
+    if is_weekday:
+        # Weekday case
+        # "This week" = Monday to Friday of current week
+        days_since_monday = today.weekday()
+        this_week_start = today - timedelta(days=days_since_monday)  # Monday
+        this_week_end = this_week_start + timedelta(days=4)  # Friday
+        
+        # "This weekend" = Upcoming Saturday-Sunday
+        days_until_saturday = (5 - today.weekday()) % 7
+        if days_until_saturday == 0:
+            days_until_saturday = 7
         this_weekend_sat = today + timedelta(days=days_until_saturday)
-    this_weekend_sun = this_weekend_sat + timedelta(days=1)
+        this_weekend_sun = this_weekend_sat + timedelta(days=1)
+        
+        # "Next week" = Week following "this week" (next Monday-Friday)
+        next_week_start = this_week_start + timedelta(days=7)
+        next_week_end = next_week_start + timedelta(days=4)
+        
+        # "Next weekend" = Weekend following "this weekend"
+        next_weekend_sat = this_weekend_sat + timedelta(days=7)
+        next_weekend_sun = next_weekend_sat + timedelta(days=1)
+    else:
+        # Weekend case
+        # "This week" = Monday to Friday (upcoming week, 1-6 days away)
+        # If today is Saturday (5): Monday in 2 days, Friday in 6 days
+        # If today is Sunday (6): Monday in 1 day, Friday in 5 days
+        days_until_monday = (7 - today.weekday()) % 7
+        if days_until_monday == 0:
+            days_until_monday = 7
+        this_week_start = today + timedelta(days=days_until_monday)  # Monday
+        this_week_end = this_week_start + timedelta(days=4)  # Friday
+        
+        # "This weekend" = Current/previous Saturday-Sunday
+        if today.weekday() == 5:  # Saturday
+            this_weekend_sat = today
+            this_weekend_sun = today + timedelta(days=1)
+        else:  # Sunday
+            this_weekend_sat = today - timedelta(days=1)
+            this_weekend_sun = today
+        
+        # "Next week" = Same as "this week" (upcoming Monday-Friday)
+        next_week_start = this_week_start
+        next_week_end = this_week_end
+        
+        # "Next weekend" = Weekend following "this weekend"
+        next_weekend_sat = this_weekend_sat + timedelta(days=7)
+        next_weekend_sun = next_weekend_sat + timedelta(days=1)
+    
+    # Output "this week"
+    items.append(f'- "this week": {format_date(this_week_start)} - {format_date(this_week_end)} {format_date_range(this_week_start, this_week_end)}')
+    
+    # Output "this weekend"
     items.append(f'- "this weekend": {format_date(this_weekend_sat)} - {format_date(this_weekend_sun)} {format_date_range(this_weekend_sat, this_weekend_sun)}')
     
-    # Next weekend
-    next_weekend_sat = this_weekend_sat + timedelta(days=7)
-    next_weekend_sun = next_weekend_sat + timedelta(days=1)
+    # Output "next week"
+    items.append(f'- "next week": {format_date(next_week_start)} - {format_date(next_week_end)} {format_date_range(next_week_start, next_week_end)}')
+    
+    # Output "next weekend"
     items.append(f'- "next weekend": {format_date(next_weekend_sat)} - {format_date(next_weekend_sun)} {format_date_range(next_weekend_sat, next_weekend_sun)}')
     
-    # This month
-    month_name = calendar.month_name[current_datetime.month]
-    month_start = datetime(current_datetime.year, current_datetime.month, 1, tzinfo=tz).date()
-    # Get last day of month
-    if current_datetime.month == 12:
-        month_end = datetime(current_datetime.year + 1, 1, 1, tzinfo=tz).date() - timedelta(days=1)
-    else:
-        month_end = datetime(current_datetime.year, current_datetime.month + 1, 1, tzinfo=tz).date() - timedelta(days=1)
-    items.append(f'- "this month": {month_name} {current_datetime.year} {format_date_range(month_start, month_end)}')
+    # "Next X" - depends on whether X is weekday or weekend
+    for i, day_name in enumerate(weekday_names):
+        if i < 5:  # Weekday (Mon-Fri)
+            # Find X within "next week" range
+            # Calculate days from next_week_start to this weekday
+            days_from_monday = i  # Monday=0, Tuesday=1, ..., Friday=4
+            next_x_date = next_week_start + timedelta(days=days_from_monday)
+        else:  # Weekend (Sat-Sun)
+            # Find X within "next weekend" range
+            if i == 5:  # Saturday
+                next_x_date = next_weekend_sat
+            else:  # Sunday
+                next_x_date = next_weekend_sun
+        items.append(f'- "next {day_name}": {format_date(next_x_date)} {format_day_range(next_x_date)}')
     
-    # Next month
-    if current_datetime.month == 12:
-        next_month = 1
-        next_year = current_datetime.year + 1
-    else:
-        next_month = current_datetime.month + 1
-        next_year = current_datetime.year
-    next_month_name = calendar.month_name[next_month]
-    next_month_start = datetime(next_year, next_month, 1, tzinfo=tz).date()
-    # Get last day of next month
-    if next_month == 12:
-        next_month_end = datetime(next_year + 1, 1, 1, tzinfo=tz).date() - timedelta(days=1)
-    else:
-        next_month_end = datetime(next_year, next_month + 1, 1, tzinfo=tz).date() - timedelta(days=1)
-    items.append(f'- "next month": {next_month_name} {next_year} {format_date_range(next_month_start, next_month_end)}')
+    # "Week after next" = Week following "next week"
+    week_after_next_start = next_week_start + timedelta(days=7)
+    week_after_next_end = week_after_next_start + timedelta(days=4)
+    items.append(f'- "week after next": {format_date(week_after_next_start)} - {format_date(week_after_next_end)} {format_date_range(week_after_next_start, week_after_next_end)}')
+    
+    # "Weekend after next" = Weekend following "next weekend"
+    weekend_after_next_sat = next_weekend_sat + timedelta(days=7)
+    weekend_after_next_sun = weekend_after_next_sat + timedelta(days=1)
+    items.append(f'- "weekend after next": {format_date(weekend_after_next_sat)} - {format_date(weekend_after_next_sun)} {format_date_range(weekend_after_next_sat, weekend_after_next_sun)}')
     
     return "\n".join(items)
 
