@@ -19,7 +19,4 @@ requires = ["setuptools>=61.0", "wheel"]
 build-backend = "setuptools.build_meta"
 
 [tool.setuptools]
-# Install as the "agent" package so "from agent.tools" etc. work when
-# LangGraph runs "pip install ./agent" on the dependency.
-package-dir = {agent = "."}
-packages = ["agent", "agent.schemas"]
+py-modules = ["main", "__init__"]
