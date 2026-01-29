@@ -23,28 +23,20 @@ struct AgentView: View {
             ColorPalette.Gradients.backgroundBase
                 .ignoresSafeArea()
 
-            if viewModel.hasLoadedSchedule {
-                NDayScheduleView(
-                    startDate: viewModel.scheduleDate,
-                    numberOfDays: viewModel.numberOfDays,
-                    events: viewModel.displayEvents,
-                    focusEvent: viewModel.focusEvent,
-                    userTimezone: viewModel.userTimezone,
-                    modalBottomPadding: scheduleModalPadding,
-                    selectedEvent: $selectedEventForDetails,
-                    onBackgroundTap: selectedEventForDetails != nil ? {
-                        selectedEventForDetails = nil
-                    } : nil
-                )
-                .padding(.horizontal, 4)
-                .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
-                .ignoresSafeArea(edges: .bottom) // Extend schedule to bottom of screen
-                .transition(.opacity.combined(with: .move(edge: .top)))
-            } else if viewModel.isLoadingSchedule {
-                ProgressView()
-                    .frame(maxWidth: .infinity)
-                    .padding(.top, 100)
-            }
+            // Swipeable schedule with windowed event loading
+            SwipeableScheduleView(
+                referenceDate: viewModel.scheduleDate,
+                numberOfDays: viewModel.numberOfDays,
+                events: viewModel.displayEvents,
+                userTimezone: viewModel.userTimezone,
+                modalBottomPadding: scheduleModalPadding,
+                onVisibleDaysChanged: { date in
+                    viewModel.onVisibleDaysChanged(firstVisibleDate: date)
+                }
+            )
+            .padding(.horizontal, 4)
+            .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
+            .ignoresSafeArea(edges: .bottom)
         }
         .overlay(alignment: .top) {
             if let event = selectedEventForDetails {
@@ -105,15 +97,15 @@ struct AgentView: View {
             if didConfigureViewModel == false {
                 viewModel.configure(authProvider: authViewModel)
                 didConfigureViewModel = true
-                try? await viewModel.loadCurrentDaySchedule()
+                // Load initial windowed events centered on today
+                try? await viewModel.loadWindowedEvents(centerDate: Date())
             }
         }
         .onAppear {
-            // Reload schedule when view reappears (e.g., returning from Calendar Accounts page)
-            // Only reload if viewModel has already been configured
+            // Reload events when view appears (if already configured)
             if didConfigureViewModel {
                 Task {
-                    try? await viewModel.loadCurrentDaySchedule(force: true)
+                    try? await viewModel.loadWindowedEvents(centerDate: Date(), force: true)
                 }
             }
         }

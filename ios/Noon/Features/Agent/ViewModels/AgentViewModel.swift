@@ -38,6 +38,15 @@ final class AgentViewModel: ObservableObject {
     @Published var noticeMessage: String?
     @Published var errorState: AgentError?
     
+    // Windowed event loading state
+    @Published private(set) var loadedWindowStart: Date?
+    @Published private(set) var loadedWindowEnd: Date?
+    @Published private(set) var isLoadingWindow: Bool = false
+    
+    // Window loading configuration
+    private let windowBuffer: Int = 14  // Days to load on each side of visible
+    private let reloadThreshold: Int = 5  // Days from edge to trigger reload
+    
     private var noticeDismissTask: Task<Void, Never>?
     private var errorDismissTask: Task<Void, Never>?
     
@@ -505,6 +514,82 @@ final class AgentViewModel: ObservableObject {
         
         let loadDuration = Date().timeIntervalSince(loadStart)
         await timingLogger.logStep("frontend.load_schedule", duration: loadDuration)
+    }
+    
+    // MARK: - Windowed Event Loading
+    
+    /// Load events for a window centered on the given date.
+    /// Used by SwipeableScheduleView for dynamic loading as user scrolls.
+    func loadWindowedEvents(centerDate: Date, force: Bool = false) async throws {
+        let normalizedCenter = calendar.startOfDay(for: centerDate)
+        
+        // Calculate window: centerDate ± windowBuffer days
+        guard let windowStart = calendar.date(byAdding: .day, value: -windowBuffer, to: normalizedCenter),
+              let windowEnd = calendar.date(byAdding: .day, value: windowBuffer + 1, to: normalizedCenter) else {
+            return
+        }
+        
+        // Skip if already loaded (unless force)
+        if !force, let loadedStart = loadedWindowStart, let loadedEnd = loadedWindowEnd {
+            if windowStart >= loadedStart && windowEnd <= loadedEnd {
+                return  // Already loaded
+            }
+        }
+        
+        // Prevent concurrent loads
+        guard !isLoadingWindow else { return }
+        
+        isLoadingWindow = true
+        defer { isLoadingWindow = false }
+        
+        let startDateISO = Self.iso8601DateFormatter.string(from: windowStart)
+        let endDateISO = Self.iso8601DateFormatter.string(from: windowEnd)
+        
+        let token = try await resolveAccessToken(initial: nil)
+        let events = try await fetchScheduleEvents(
+            startDateISO: startDateISO,
+            endDateISO: endDateISO,
+            accessToken: token
+        )
+        
+        displayEvents = events
+        loadedWindowStart = windowStart
+        loadedWindowEnd = windowEnd
+        
+        // Only set scheduleDate on initial load - it's used as the stable reference point
+        // for SwipeableScheduleView. Changing it later would cause the view to jump.
+        if !hasLoadedSchedule {
+            scheduleDate = normalizedCenter
+        }
+        hasLoadedSchedule = true
+    }
+    
+    /// Called when the visible day range changes in SwipeableScheduleView.
+    /// Checks if a reload is needed based on proximity to window edges.
+    func onVisibleDaysChanged(firstVisibleDate: Date) {
+        Task {
+            await checkAndReloadIfNeeded(visibleDate: firstVisibleDate)
+        }
+    }
+    
+    private func checkAndReloadIfNeeded(visibleDate: Date) async {
+        let normalizedVisible = calendar.startOfDay(for: visibleDate)
+        
+        guard let loadedStart = loadedWindowStart,
+              let loadedEnd = loadedWindowEnd else {
+            // No window loaded yet, load initial
+            try? await loadWindowedEvents(centerDate: normalizedVisible)
+            return
+        }
+        
+        // Calculate distance to window edges
+        let daysToStart = calendar.dateComponents([.day], from: loadedStart, to: normalizedVisible).day ?? 0
+        let daysToEnd = calendar.dateComponents([.day], from: normalizedVisible, to: loadedEnd).day ?? 0
+        
+        // Reload if within threshold of either edge
+        if daysToStart < reloadThreshold || daysToEnd < reloadThreshold {
+            try? await loadWindowedEvents(centerDate: normalizedVisible)
+        }
     }
 
     private func localizedMessage(for error: Error) -> String {
