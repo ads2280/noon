@@ -9,7 +9,6 @@ import Foundation
 
 struct ScheduleDisplayConfiguration {
     let date: Date
-    let focusEvent: ScheduleFocusEvent?
 }
 
 protocol ShowScheduleActionHandling {
@@ -39,9 +38,9 @@ struct ShowScheduleActionHandler: ShowScheduleActionHandling {
             // We want to show the schedule for the calendar day that this date falls on
             // in the calendar's timezone, so we use startOfDay to normalize it.
             let derived = calendar.startOfDay(for: start)
-            return ScheduleDisplayConfiguration(date: derived, focusEvent: nil)
+            return ScheduleDisplayConfiguration(date: derived)
         default:
-            return ScheduleDisplayConfiguration(date: calendar.startOfDay(for: Date()), focusEvent: nil)
+            return ScheduleDisplayConfiguration(date: calendar.startOfDay(for: Date()))
         }
     }
 }

@@ -993,29 +993,6 @@ struct SwipeableScheduleView: View {
         return (width, offsetX)
     }
     
-    /// Filter events that occur on a specific day (used for backwards compatibility; overlap path uses timedSegmentsForDay)
-    private func eventsForDay(_ date: Date) -> [DisplayEvent] {
-        let dayStart = calendar.startOfDay(for: date)
-        guard let dayEnd = calendar.date(byAdding: .day, value: 1, to: dayStart) else {
-            return []
-        }
-        
-        return events.filter { event in
-            // Skip hidden events
-            guard !event.isHidden else { return false }
-            
-            // For timed events, check if event overlaps this day
-            if let startTime = event.event.start?.dateTime,
-               let endTime = event.event.end?.dateTime {
-                // Event overlaps day if: start < dayEnd AND end > dayStart
-                return startTime < dayEnd && endTime > dayStart
-            }
-            
-            // All-day events are handled separately
-            return false
-        }
-    }
-    
     /// Render a timed event segment card with overlap layout
     @ViewBuilder
     private func segmentEventCard(
@@ -1069,87 +1046,6 @@ struct SwipeableScheduleView: View {
         let duration = endHour - startHour
         guard duration > 0 else { return nil }
         return (startHour, endHour, duration)
-    }
-    
-    /// Render an event card positioned based on its start/end time (legacy single-column; overlap path uses segmentEventCard)
-    @ViewBuilder
-    private func eventCard(
-        for event: DisplayEvent,
-        on dayDate: Date,
-        dayColumnWidth: CGFloat,
-        gridHeight: CGFloat
-    ) -> some View {
-        if let layout = eventLayout(for: event, on: dayDate, dayColumnWidth: dayColumnWidth) {
-            let title = event.event.title?.isEmpty == false ? event.event.title! : "Untitled Event"
-            let calendarColor = event.event.calendarColor.flatMap { Color.fromHex($0) }
-            let style: ScheduleEventCard.Style = eventStyle(for: event)
-            
-            ScheduleEventCard(
-                title: title,
-                cornerRadius: 5,
-                style: style,
-                calendarColor: calendarColor
-            )
-            .frame(width: layout.width, height: layout.height)
-            .offset(x: layout.offsetX, y: layout.offsetY)
-            .onTapGesture {
-                selectedEvent = event.event
-            }
-        }
-    }
-    
-    /// Calculate layout for an event on a specific day
-    private func eventLayout(
-        for event: DisplayEvent,
-        on dayDate: Date,
-        dayColumnWidth: CGFloat
-    ) -> (width: CGFloat, height: CGFloat, offsetX: CGFloat, offsetY: CGFloat)? {
-        guard let startTime = event.event.start?.dateTime,
-              let endTime = event.event.end?.dateTime else {
-            return nil
-        }
-        
-        let dayStart = calendar.startOfDay(for: dayDate)
-        guard let dayEnd = calendar.date(byAdding: .day, value: 1, to: dayStart) else {
-            return nil
-        }
-        
-        // Clamp event times to this day's boundaries
-        let clampedStart = max(startTime, dayStart)
-        let clampedEnd = min(endTime, dayEnd)
-        
-        // Calculate position as difference FROM start of day (not extracting time components)
-        // This correctly handles midnight as 24 hours, not 0 hours
-        // For multi-day events, this ensures middle days show the full 24-hour segment
-        let startComponents = calendar.dateComponents([.minute, .second], from: dayStart, to: clampedStart)
-        let endComponents = calendar.dateComponents([.minute, .second], from: dayStart, to: clampedEnd)
-        
-        guard let startMinutes = startComponents.minute,
-              let endMinutes = endComponents.minute else {
-            return nil
-        }
-        
-        let startSeconds = Double(startComponents.second ?? 0)
-        let endSeconds = Double(endComponents.second ?? 0)
-        
-        let startHour = (Double(startMinutes) + startSeconds / 60.0) / 60.0
-        let endHour = (Double(endMinutes) + endSeconds / 60.0) / 60.0
-        let durationHours = endHour - startHour
-        
-        guard durationHours > 0 else {
-            return nil
-        }
-        
-        let topOffset = timelineTopInset + hourHeight * CGFloat(startHour)
-        let eventHeight = max(hourHeight * CGFloat(durationHours) - verticalEventInset, minimumEventHeight)
-        let eventWidth = dayColumnWidth - horizontalEventInset
-        
-        return (
-            width: eventWidth,
-            height: eventHeight,
-            offsetX: horizontalEventInset / 2,
-            offsetY: topOffset
-        )
     }
     
     /// True if the event's end time has passed (timed or all-day).
@@ -1211,7 +1107,7 @@ struct SwipeableScheduleView: View {
                     .transition(.identity)
             }
         }
-        .accessibilityIdentifier(numberOfDays == 1 ? "schedule-date-label" : "schedule-date-headers")
+        .accessibilityIdentifier("schedule-date-header")
         .animation(nil, value: horizontalOffset)
     }
     
@@ -1557,6 +1453,12 @@ struct SwipeableScheduleView: View {
             try? await Task.sleep(nanoseconds: 250_000_000) // let vertical animation finish
             isProgrammaticScrolling = false
         }
+    }
+}
+
+extension Array where Element == Int {
+    fileprivate func overlaps(with other: [Int]) -> Bool {
+        !Set(self).isDisjoint(with: Set(other))
     }
 }
 
