@@ -73,7 +73,6 @@ class CalendarUpdate(BaseModel):
 class ScheduleRequest(BaseModel):
     start_date: date
     end_date: date
-    timezone: str = Field(default="UTC", min_length=1)
 
 
 # Event time discriminated union types
@@ -267,7 +266,6 @@ class CreateEventRequest(BaseModel):
     calendar_id: str = Field(..., min_length=1)
     description: Optional[str] = None
     location: Optional[str] = None
-    timezone: str = Field(default="UTC", min_length=1)
     
     @model_validator(mode='after')
     def validate_event_times(self):
@@ -288,7 +286,6 @@ class UpdateEventRequest(BaseModel):
     calendar_id: str = Field(..., min_length=1)
     description: Optional[str] = None
     location: Optional[str] = None
-    timezone: str = Field(default="UTC", min_length=1)
     
     @model_validator(mode='after')
     def validate_event_times(self):
