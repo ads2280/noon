@@ -38,7 +38,10 @@ struct AgentView: View {
                 scrollTarget: Binding(
                     get: { viewModel.scrollTarget },
                     set: { viewModel.scrollTarget = $0 }
-                )
+                ),
+                selectedEvent: $selectedEventForDetails,
+                focusEvent: viewModel.focusEvent,
+                onBackgroundTap: { selectedEventForDetails = nil }
             )
             .padding(.horizontal, 4)
             .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)

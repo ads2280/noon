@@ -26,6 +26,22 @@ private struct AllDayEventRow {
     let rowIndex: Int
 }
 
+// MARK: - Timed Event Segment (for overlap layout)
+
+private struct TimedEventSegment: Identifiable {
+    let id: String       // "\(event.id)-\(dayIndex)"
+    let event: DisplayEvent
+    let eventID: String
+    let day: Date
+    let startTime: Date  // Clamped to day
+    let endTime: Date    // Clamped to day
+}
+
+private struct ColumnLayoutInfo {
+    let columnIndex: Int
+    let columnCount: Int
+}
+
 // MARK: - All-Day Event Card
 
 /// A custom all-day event card with a sticky title that stays visible when scrolling
@@ -228,6 +244,9 @@ struct SwipeableScheduleView: View {
     let onVisibleDaysChanged: ((Date) -> Void)?
     @Binding var scrollToNowTrigger: Int
     @Binding var scrollTarget: ScheduleScrollTarget?
+    @Binding var selectedEvent: CalendarEvent?
+    let focusEvent: ScheduleFocusEvent?
+    let onBackgroundTap: (() -> Void)?
 
     private let hours = Array(0..<24)
     
@@ -240,11 +259,13 @@ struct SwipeableScheduleView: View {
     private let hourHeight: CGFloat = 40
     private let horizontalEventInset: CGFloat = 5
     private let verticalEventInset: CGFloat = 2
-    private let minimumEventHeight: CGFloat = 20
+    private let minimumEventHeight: CGFloat = 8
     private let allDayEventHeight: CGFloat = 20
     private let allDayRowSpacing: CGFloat = 2
     private let allDayTopPadding: CGFloat = 4
     private let allDayBottomPadding: CGFloat = 2
+    private let overlapFractionHorizontal: CGFloat = 0.2
+    private let minimumBaseColumnWidth: CGFloat = 70
     
     // Cached calendar instance (computed once in init)
     private let calendar: Calendar
@@ -284,13 +305,19 @@ struct SwipeableScheduleView: View {
         modalBottomPadding: CGFloat = 0,
         onVisibleDaysChanged: ((Date) -> Void)? = nil,
         scrollToNowTrigger: Binding<Int> = .constant(0),
-        scrollTarget: Binding<ScheduleScrollTarget?> = .constant(nil)
+        scrollTarget: Binding<ScheduleScrollTarget?> = .constant(nil),
+        selectedEvent: Binding<CalendarEvent?> = .constant(nil),
+        focusEvent: ScheduleFocusEvent? = nil,
+        onBackgroundTap: (() -> Void)? = nil
     ) {
         self.userTimezone = userTimezone
         self.events = events
         self.onVisibleDaysChanged = onVisibleDaysChanged
         self._scrollToNowTrigger = scrollToNowTrigger
         self._scrollTarget = scrollTarget
+        self._selectedEvent = selectedEvent
+        self.focusEvent = focusEvent
+        self.onBackgroundTap = onBackgroundTap
         
         // Create and cache calendar once
         if let userTimezone = userTimezone, let timeZone = TimeZone(identifier: userTimezone) {
@@ -406,7 +433,9 @@ struct SwipeableScheduleView: View {
                                         LazyHStack(alignment: .top, spacing: 0) {
                                             ForEach(0..<totalDayCount, id: \.self) { dayIndex in
                                                 let dayDate = dateForDayIndex(dayIndex)
-                                                let dayEvents = eventsForDay(dayDate)
+                                                let segments = timedSegmentsForDay(dayDate)
+                                                let columnLayout = computeColumnLayout(for: segments)
+                                                let orderedSegments = orderedSegmentsForDay(segments, columnLayout: columnLayout)
                                                 let isWeekend = isWeekendDay(dayDate)
                                                 
                                                 // Day column with grid lines and events
@@ -429,11 +458,11 @@ struct SwipeableScheduleView: View {
                                                     }
                                                     .frame(width: dayColumnWidth, height: gridHeight)
                                                     
-                                                    // Event cards (timed events only, exclude all-day)
-                                                    ForEach(dayEvents.filter { !$0.event.isAllDay }, id: \.id) { event in
-                                                        eventCard(
-                                                            for: event,
-                                                            on: dayDate,
+                                                    // Event cards (timed events with overlap layout)
+                                                    ForEach(orderedSegments) { segment in
+                                                        segmentEventCard(
+                                                            segment: segment,
+                                                            columnLayout: columnLayout,
                                                             dayColumnWidth: dayColumnWidth,
                                                             gridHeight: gridHeight
                                                         )
@@ -475,6 +504,15 @@ struct SwipeableScheduleView: View {
                         }
                         .scrollBounceBehavior(.basedOnSize)
                         .scrollDisabled(isProgrammaticScrolling)
+                        .simultaneousGesture(
+                            onBackgroundTap != nil ? DragGesture(minimumDistance: 0)
+                                .onEnded { value in
+                                    let distance = sqrt(pow(value.translation.width, 2) + pow(value.translation.height, 2))
+                                    if distance < 10 {
+                                        onBackgroundTap?()
+                                    }
+                                } : nil
+                        )
                         .onScrollGeometryChange(for: CGFloat.self) { geo in
                             geo.contentOffset.y
                         } action: { _, newValue in
@@ -783,7 +821,7 @@ struct SwipeableScheduleView: View {
             
             let title = segment.event.event.title?.isEmpty == false ? segment.event.event.title! : "Untitled Event"
             let calendarColor = segment.event.event.calendarColor.flatMap { Color.fromHex($0) }
-            let style: ScheduleEventCard.Style = isEventPast(segment.event) ? .past : cardStyle(for: segment.event.style)
+            let style: ScheduleEventCard.Style = eventStyle(for: segment.event)
             
             // Calculate sticky title offset
             let stickyOffset = calculateStickyTitleOffset(
@@ -801,12 +839,161 @@ struct SwipeableScheduleView: View {
             )
             .frame(width: cardWidth, height: allDayEventHeight)
             .offset(x: offsetX)
+            .onTapGesture {
+                selectedEvent = segment.event.event
+            }
         }
     }
     
     // MARK: - Timed Event Rendering
     
-    /// Filter events that occur on a specific day
+    /// Create timed event segments for a specific day (clamped to day boundaries)
+    private func timedSegmentsForDay(_ dayDate: Date) -> [TimedEventSegment] {
+        let dayStart = calendar.startOfDay(for: dayDate)
+        guard let dayEnd = calendar.date(byAdding: .day, value: 1, to: dayStart) else {
+            return []
+        }
+        
+        let dayIdx = dayIndexForDate(dayDate)
+        var segments: [TimedEventSegment] = []
+        
+        for event in events where !event.isHidden && !event.event.isAllDay {
+            guard let startTime = event.event.start?.dateTime,
+                  let endTime = event.event.end?.dateTime,
+                  startTime < dayEnd, endTime > dayStart else {
+                continue
+            }
+            let clampedStart = max(startTime, dayStart)
+            let clampedEnd = min(endTime, dayEnd)
+            let segment = TimedEventSegment(
+                id: "\(event.id)-\(dayIdx)",
+                event: event,
+                eventID: event.id,
+                day: dayDate,
+                startTime: clampedStart,
+                endTime: clampedEnd
+            )
+            segments.append(segment)
+        }
+        return segments
+    }
+    
+    /// Computes an overlap-aware column layout for a day's timed segments
+    private func computeColumnLayout(for segments: [TimedEventSegment]) -> [String: ColumnLayoutInfo] {
+        var layout: [String: ColumnLayoutInfo] = [:]
+        guard !segments.isEmpty else { return layout }
+        
+        let sorted = segments.sorted { lhs, rhs in
+            if lhs.startTime != rhs.startTime { return lhs.startTime < rhs.startTime }
+            return lhs.endTime < rhs.endTime
+        }
+        
+        var currentCluster: [TimedEventSegment] = []
+        var currentClusterEnd: Date?
+        
+        func finalizeCurrentCluster() {
+            guard !currentCluster.isEmpty else { return }
+            let assignments = assignColumns(to: currentCluster)
+            for (id, info) in assignments {
+                layout[id] = info
+            }
+            currentCluster.removeAll(keepingCapacity: true)
+            currentClusterEnd = nil
+        }
+        
+        for segment in sorted {
+            if currentCluster.isEmpty {
+                currentCluster = [segment]
+                currentClusterEnd = segment.endTime
+            } else if let clusterEnd = currentClusterEnd, segment.startTime < clusterEnd {
+                currentCluster.append(segment)
+                if segment.endTime > clusterEnd {
+                    currentClusterEnd = segment.endTime
+                }
+            } else {
+                finalizeCurrentCluster()
+                currentCluster = [segment]
+                currentClusterEnd = segment.endTime
+            }
+        }
+        finalizeCurrentCluster()
+        return layout
+    }
+    
+    private func assignColumns(to cluster: [TimedEventSegment]) -> [String: ColumnLayoutInfo] {
+        guard !cluster.isEmpty else { return [:] }
+        
+        let sortedCluster = cluster.sorted { lhs, rhs in
+            if lhs.startTime != rhs.startTime { return lhs.startTime < rhs.startTime }
+            return lhs.endTime < rhs.endTime
+        }
+        
+        var columnEndTimes: [Date] = []
+        var columnAssignments: [String: Int] = [:]
+        
+        for segment in sortedCluster {
+            var assignedColumnIndex: Int?
+            for (index, endTime) in columnEndTimes.enumerated() {
+                if segment.startTime >= endTime {
+                    assignedColumnIndex = index
+                    columnEndTimes[index] = segment.endTime
+                    break
+                }
+            }
+            if assignedColumnIndex == nil {
+                columnEndTimes.append(segment.endTime)
+                assignedColumnIndex = columnEndTimes.count - 1
+            }
+            if let index = assignedColumnIndex {
+                columnAssignments[segment.id] = index
+            }
+        }
+        
+        let totalColumns = max(1, columnEndTimes.count)
+        var result: [String: ColumnLayoutInfo] = [:]
+        for (id, index) in columnAssignments {
+            result[id] = ColumnLayoutInfo(columnIndex: index, columnCount: totalColumns)
+        }
+        return result
+    }
+    
+    private func orderedSegmentsForDay(
+        _ segments: [TimedEventSegment],
+        columnLayout: [String: ColumnLayoutInfo]
+    ) -> [TimedEventSegment] {
+        segments.sorted { lhs, rhs in
+            let lhsCol = columnLayout[lhs.id]?.columnIndex ?? 0
+            let rhsCol = columnLayout[rhs.id]?.columnIndex ?? 0
+            if lhsCol != rhsCol { return lhsCol < rhsCol }
+            if lhs.startTime != rhs.startTime { return lhs.startTime < rhs.startTime }
+            return lhs.endTime < rhs.endTime
+        }
+    }
+    
+    /// Compute event dimensions for overlap layout. Returns (width, offsetX) relative to column origin.
+    private func computeEventDimensions(
+        columnCount: Int,
+        columnIndex: Int,
+        dayColumnWidth: CGFloat
+    ) -> (width: CGFloat, offsetX: CGFloat) {
+        if columnCount == 1 {
+            let width = dayColumnWidth - horizontalEventInset
+            return (width, horizontalEventInset / 2)
+        }
+        let baseColumnWidth = dayColumnWidth / CGFloat(columnCount)
+        var overlapFraction = overlapFractionHorizontal
+        if baseColumnWidth < minimumBaseColumnWidth {
+            overlapFraction = overlapFractionHorizontal * max(0, baseColumnWidth / minimumBaseColumnWidth)
+        }
+        let width = baseColumnWidth * (1.0 + overlapFraction)
+        let tentativeLeft = baseColumnWidth * CGFloat(columnIndex)
+        let maxRight = dayColumnWidth - horizontalEventInset
+        let maxLeft = maxRight - width
+        let offsetX = min(tentativeLeft, max(0, maxLeft))
+        return (width, offsetX)
+    }
+    
+    /// Filter events that occur on a specific day (used for backwards compatibility; overlap path uses timedSegmentsForDay)
     private func eventsForDay(_ date: Date) -> [DisplayEvent] {
         let dayStart = calendar.startOfDay(for: date)
         guard let dayEnd = calendar.date(byAdding: .day, value: 1, to: dayStart) else {
@@ -829,7 +1016,62 @@ struct SwipeableScheduleView: View {
         }
     }
     
-    /// Render an event card positioned based on its start/end time
+    /// Render a timed event segment card with overlap layout
+    @ViewBuilder
+    private func segmentEventCard(
+        segment: TimedEventSegment,
+        columnLayout: [String: ColumnLayoutInfo],
+        dayColumnWidth: CGFloat,
+        gridHeight: CGFloat
+    ) -> some View {
+        if let layout = segmentLayout(for: segment) {
+            let columnInfo = columnLayout[segment.id]
+            let columnCount = max(1, columnInfo?.columnCount ?? 1)
+            let columnIndex = columnInfo?.columnIndex ?? 0
+            let (eventWidth, offsetX) = computeEventDimensions(
+                columnCount: columnCount,
+                columnIndex: columnIndex,
+                dayColumnWidth: dayColumnWidth
+            )
+            let topOffset = timelineTopInset + hourHeight * CGFloat(layout.startHour)
+            let eventHeight = max(hourHeight * CGFloat(layout.durationHours) - verticalEventInset, minimumEventHeight)
+            
+            let title = segment.event.event.title?.isEmpty == false ? segment.event.event.title! : "Untitled Event"
+            let calendarColor = segment.event.event.calendarColor.flatMap { Color.fromHex($0) }
+            let style: ScheduleEventCard.Style = eventStyle(for: segment.event)
+            
+            ScheduleEventCard(
+                title: title,
+                cornerRadius: 5,
+                style: style,
+                calendarColor: calendarColor
+            )
+            .frame(width: eventWidth, height: eventHeight)
+            .offset(x: offsetX, y: topOffset)
+            .onTapGesture {
+                selectedEvent = segment.event.event
+            }
+        }
+    }
+    
+    /// Layout info for a timed segment (startHour, endHour, duration)
+    private func segmentLayout(for segment: TimedEventSegment) -> (startHour: Double, endHour: Double, durationHours: Double)? {
+        let dayStart = calendar.startOfDay(for: segment.day)
+        let startComponents = calendar.dateComponents([.minute, .second], from: dayStart, to: segment.startTime)
+        let endComponents = calendar.dateComponents([.minute, .second], from: dayStart, to: segment.endTime)
+        guard let startMinutes = startComponents.minute, let endMinutes = endComponents.minute else {
+            return nil
+        }
+        let startSeconds = Double(startComponents.second ?? 0)
+        let endSeconds = Double(endComponents.second ?? 0)
+        let startHour = (Double(startMinutes) + startSeconds / 60.0) / 60.0
+        let endHour = (Double(endMinutes) + endSeconds / 60.0) / 60.0
+        let duration = endHour - startHour
+        guard duration > 0 else { return nil }
+        return (startHour, endHour, duration)
+    }
+    
+    /// Render an event card positioned based on its start/end time (legacy single-column; overlap path uses segmentEventCard)
     @ViewBuilder
     private func eventCard(
         for event: DisplayEvent,
@@ -840,7 +1082,7 @@ struct SwipeableScheduleView: View {
         if let layout = eventLayout(for: event, on: dayDate, dayColumnWidth: dayColumnWidth) {
             let title = event.event.title?.isEmpty == false ? event.event.title! : "Untitled Event"
             let calendarColor = event.event.calendarColor.flatMap { Color.fromHex($0) }
-            let style: ScheduleEventCard.Style = isEventPast(event) ? .past : cardStyle(for: event.style)
+            let style: ScheduleEventCard.Style = eventStyle(for: event)
             
             ScheduleEventCard(
                 title: title,
@@ -850,6 +1092,9 @@ struct SwipeableScheduleView: View {
             )
             .frame(width: layout.width, height: layout.height)
             .offset(x: layout.offsetX, y: layout.offsetY)
+            .onTapGesture {
+                selectedEvent = event.event
+            }
         }
     }
     
@@ -937,6 +1182,17 @@ struct SwipeableScheduleView: View {
         }
     }
     
+    /// Resolve card style: selected > focus > past/event.style
+    private func eventStyle(for event: DisplayEvent) -> ScheduleEventCard.Style {
+        if selectedEvent?.id == event.id {
+            return .highlight
+        }
+        if let focus = focusEvent, focus.eventID == event.id {
+            return cardStyle(for: focus.style)
+        }
+        return isEventPast(event) ? .past : cardStyle(for: event.style)
+    }
+    
     // MARK: - Date Headers Content (Column Labels)
     
     @ViewBuilder
@@ -955,6 +1211,7 @@ struct SwipeableScheduleView: View {
                     .transition(.identity)
             }
         }
+        .accessibilityIdentifier(numberOfDays == 1 ? "schedule-date-label" : "schedule-date-headers")
         .animation(nil, value: horizontalOffset)
     }
     
