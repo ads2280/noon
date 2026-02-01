@@ -13,6 +13,7 @@ struct AgentView: View {
     @State private var isPressingMic = false
     @State private var selectedEventForDetails: CalendarEvent?
     @State private var isLoadingEventDetails = false
+    @Binding var scrollToNowTrigger: Int
 
     @EnvironmentObject private var authViewModel: AuthViewModel
     @State private var isLoading = false
@@ -32,7 +33,8 @@ struct AgentView: View {
                 modalBottomPadding: scheduleModalPadding,
                 onVisibleDaysChanged: { date in
                     viewModel.onVisibleDaysChanged(firstVisibleDate: date)
-                }
+                },
+                scrollToNowTrigger: $scrollToNowTrigger
             )
             .padding(.horizontal, 4)
             .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
@@ -269,6 +271,6 @@ struct AgentView: View {
 }
 
 #Preview {
-    AgentView()
+    AgentView(scrollToNowTrigger: .constant(0))
         .environmentObject(AuthViewModel())
 }

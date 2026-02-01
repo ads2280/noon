@@ -11,7 +11,7 @@ import Foundation
 
 // MARK: - All-Day Event Data Structures
 
-private struct AllDaySegmentCard: Identifiable {
+private struct AllDayEvent: Identifiable {
     let id: String                    // Unique: "\(event.id)-allday"
     let event: DisplayEvent           // Original event
     let eventID: String               // event.id
@@ -22,14 +22,14 @@ private struct AllDaySegmentCard: Identifiable {
 }
 
 private struct AllDayEventRow {
-    var segments: [AllDaySegmentCard]
+    var segments: [AllDayEvent]
     let rowIndex: Int
 }
 
-// MARK: - Sticky Title All-Day Card
+// MARK: - All-Day Event Card
 
 /// A custom all-day event card with a sticky title that stays visible when scrolling
-private struct StickyTitleAllDayCard: View {
+private struct AllDayEventCard: View {
     let title: String
     let calendarColor: Color?
     let style: ScheduleEventCard.Style
@@ -85,6 +85,8 @@ private struct StickyTitleAllDayCard: View {
                 opacity = 0.45
             } else if style == .destructive {
                 opacity = 0.3
+            } else if style == .past {
+                opacity = 0.15
             } else {
                 opacity = 0.2
             }
@@ -104,6 +106,8 @@ private struct StickyTitleAllDayCard: View {
             return ColorPalette.Text.primary
         case .destructive:
             return ColorPalette.Text.primary.opacity(0.55)
+        case .past:
+            return ColorPalette.Text.secondary.opacity(0.75)
         }
     }
     
@@ -115,8 +119,8 @@ private struct StickyTitleAllDayCard: View {
     }
     
     private var shadowAttributes: (color: Color, radius: CGFloat, x: CGFloat, y: CGFloat) {
-        let radius: CGFloat = style == .standard ? 8 : 14
-        let y: CGFloat = style == .standard ? 5 : 10
+        let radius: CGFloat = (style == .standard || style == .past) ? 8 : 14
+        let y: CGFloat = (style == .standard || style == .past) ? 5 : 10
         return (shadowColor, radius, 0, y)
     }
     
@@ -125,6 +129,8 @@ private struct StickyTitleAllDayCard: View {
         let shape = RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
         let borderColor: Color = style == .destructive
             ? ColorPalette.Surface.destructiveMuted
+            : style == .past
+            ? (calendarColor?.opacity(0.4) ?? ColorPalette.Text.secondary.opacity(0.3))
             : (calendarColor ?? ColorPalette.Text.secondary.opacity(0.45))
         
         switch style {
@@ -220,6 +226,7 @@ struct SwipeableScheduleView: View {
     // Events and callbacks
     let events: [DisplayEvent]
     let onVisibleDaysChanged: ((Date) -> Void)?
+    @Binding var scrollToNowTrigger: Int
 
     private let hours = Array(0..<24)
     
@@ -255,6 +262,9 @@ struct SwipeableScheduleView: View {
     // Cached all-day rows (updated only when events change)
     @State private var cachedAllDayRows: [AllDayEventRow] = []
     
+    // Vertical scroll proxy for programmatic scrolling
+    @State private var verticalScrollProxy: ScrollViewProxy?
+    
     // normalizedReferenceDate is just referenceDate since it's already normalized in init
     private var normalizedReferenceDate: Date { referenceDate }
     
@@ -268,11 +278,13 @@ struct SwipeableScheduleView: View {
         events: [DisplayEvent] = [],
         userTimezone: String? = nil,
         modalBottomPadding: CGFloat = 0,
-        onVisibleDaysChanged: ((Date) -> Void)? = nil
+        onVisibleDaysChanged: ((Date) -> Void)? = nil,
+        scrollToNowTrigger: Binding<Int> = .constant(0)
     ) {
         self.userTimezone = userTimezone
         self.events = events
         self.onVisibleDaysChanged = onVisibleDaysChanged
+        self._scrollToNowTrigger = scrollToNowTrigger
         
         // Create and cache calendar once
         if let userTimezone = userTimezone, let timeZone = TimeZone(identifier: userTimezone) {
@@ -373,78 +385,101 @@ struct SwipeableScheduleView: View {
                     .offset(x: horizontalOffset)
                     .frame(width: viewportWidth, height: allDaySectionHeight, alignment: .topLeading)
                     .clipped()
+                    .animation(.easeInOut(duration: 0.25), value: visibleRows.count)
                     
                     // Bottom-right: Nested scroll views for direction locking
-                    // OUTER: Vertical ScrollView - handles up/down
-                    ScrollView(.vertical, showsIndicators: false) {
-                        // INNER: Horizontal ScrollView with snap - handles left/right
-                        ScrollView(.horizontal, showsIndicators: false) {
-                            LazyHStack(alignment: .top, spacing: 0) {
-                                ForEach(0..<totalDayCount, id: \.self) { dayIndex in
-                                    let dayDate = dateForDayIndex(dayIndex)
-                                    let dayEvents = eventsForDay(dayDate)
-                                    let isWeekend = isWeekendDay(dayDate)
-                                    
-                                    // Day column with grid lines and events
-                                    ZStack(alignment: .topLeading) {
-                                        // Weekend background tint
-                                        if isWeekend {
-                                            ColorPalette.Surface.weekendTint
+                    // ScrollViewReader wraps the vertical scroll for programmatic scrolling
+                    ScrollViewReader { verticalProxy in
+                        // OUTER: Vertical ScrollView - handles up/down
+                        ScrollView(.vertical, showsIndicators: false) {
+                            ZStack(alignment: .topLeading) {
+                                // Main content: horizontal scroll + bottom padding
+                                VStack(spacing: 0) {
+                                    // INNER: Horizontal ScrollView with snap - handles left/right
+                                    ScrollView(.horizontal, showsIndicators: false) {
+                                        LazyHStack(alignment: .top, spacing: 0) {
+                                            ForEach(0..<totalDayCount, id: \.self) { dayIndex in
+                                                let dayDate = dateForDayIndex(dayIndex)
+                                                let dayEvents = eventsForDay(dayDate)
+                                                let isWeekend = isWeekendDay(dayDate)
+                                                
+                                                // Day column with grid lines and events
+                                                ZStack(alignment: .topLeading) {
+                                                    // Weekend background tint
+                                                    if isWeekend {
+                                                        ColorPalette.Surface.weekendTint
+                                                            .frame(width: dayColumnWidth, height: gridHeight)
+                                                    }
+                                                    
+                                                    // Grid lines
+                                                    Canvas { context, _ in
+                                                        for index in 0...hours.count {
+                                                            let y = timelineTopInset + hourHeight * CGFloat(index)
+                                                            var path = Path()
+                                                            path.move(to: CGPoint(x: 0, y: y))
+                                                            path.addLine(to: CGPoint(x: dayColumnWidth, y: y))
+                                                            context.stroke(path, with: .color(lineColor), lineWidth: 1)
+                                                        }
+                                                    }
+                                                    .frame(width: dayColumnWidth, height: gridHeight)
+                                                    
+                                                    // Event cards (timed events only, exclude all-day)
+                                                    ForEach(dayEvents.filter { !$0.event.isAllDay }, id: \.id) { event in
+                                                        eventCard(
+                                                            for: event,
+                                                            on: dayDate,
+                                                            dayColumnWidth: dayColumnWidth,
+                                                            gridHeight: gridHeight
+                                                        )
+                                                    }
+
+                                                    // Current time line (today column only, theme orange gradient)
+                                                    if isToday(dayDate) {
+                                                        currentTimeLineView(dayColumnWidth: dayColumnWidth, gridHeight: gridHeight)
+                                                    }
+                                                }
                                                 .frame(width: dayColumnWidth, height: gridHeight)
-                                        }
-                                        
-                                        // Grid lines
-                                        Canvas { context, _ in
-                                            for index in 0...hours.count {
-                                                let y = timelineTopInset + hourHeight * CGFloat(index)
-                                                var path = Path()
-                                                path.move(to: CGPoint(x: 0, y: y))
-                                                path.addLine(to: CGPoint(x: dayColumnWidth, y: y))
-                                                context.stroke(path, with: .color(lineColor), lineWidth: 1)
+                                                .id(dayIndex)
                                             }
                                         }
-                                        .frame(width: dayColumnWidth, height: gridHeight)
-                                        
-                                        // Event cards (timed events only, exclude all-day)
-                                        ForEach(dayEvents.filter { !$0.event.isAllDay }, id: \.id) { event in
-                                            eventCard(
-                                                for: event,
-                                                on: dayDate,
-                                                dayColumnWidth: dayColumnWidth,
-                                                gridHeight: gridHeight
-                                            )
-                                        }
+                                        .scrollTargetLayout()
                                     }
-                                    .frame(width: dayColumnWidth, height: gridHeight)
-                                    .id(dayIndex)
+                                    .scrollTargetBehavior(.viewAligned)
+                                    .scrollPosition(id: $scrolledDayIndex, anchor: .leading)
+                                    .frame(height: gridHeight) // CRITICAL: explicit height for gesture pass-through
+                                    .onScrollGeometryChange(for: CGFloat.self) { geo in
+                                        geo.contentOffset.x
+                                    } action: { _, newValue in
+                                        horizontalOffset = -newValue
+                                    }
+                                    
+                                    // Bottom padding OUTSIDE inner scroll, INSIDE outer scroll
+                                    Color.clear
+                                        .frame(width: viewportWidth, height: paddingHeight)
                                 }
+                                
+                                // Invisible scroll anchors for programmatic vertical scrolling
+                                scrollAnchorsOverlay(
+                                    gridHeight: gridHeight,
+                                    paddingHeight: paddingHeight,
+                                    viewportWidth: viewportWidth
+                                )
                             }
-                            .scrollTargetLayout()
                         }
-                        .scrollTargetBehavior(.viewAligned)
-                        .scrollPosition(id: $scrolledDayIndex, anchor: .leading)
-                        .frame(height: gridHeight) // CRITICAL: explicit height for gesture pass-through
+                        .scrollBounceBehavior(.basedOnSize)
                         .onScrollGeometryChange(for: CGFloat.self) { geo in
-                            geo.contentOffset.x
+                            geo.contentOffset.y
                         } action: { _, newValue in
-                            horizontalOffset = -newValue
+                            verticalOffset = -newValue
                         }
-                        
-                        // Bottom padding OUTSIDE inner scroll, INSIDE outer scroll
-                        Color.clear
-                            .frame(width: viewportWidth, height: paddingHeight)
+                        .frame(width: viewportWidth)
+                        .onAppear {
+                            verticalScrollProxy = verticalProxy
+                        }
                     }
-                    .scrollBounceBehavior(.basedOnSize)
-                    .onScrollGeometryChange(for: CGFloat.self) { geo in
-                        geo.contentOffset.y
-                    } action: { _, newValue in
-                        verticalOffset = -newValue
-                    }
-                    .frame(width: viewportWidth)
                 }
                 .frame(width: viewportWidth)
             }
-            .animation(.easeInOut(duration: 0.25), value: visibleRows.count)
             .onAppear {
                 if !hasScrolledToInitial {
                     scrolledDayIndex = initialDayIndex
@@ -470,6 +505,14 @@ struct SwipeableScheduleView: View {
                     onVisibleDaysChanged?(visibleDate)
                 }
             }
+            .onChange(of: scrollToNowTrigger) { _, _ in
+                // Trigger scroll to current date/time when parent increments the trigger
+                scrollToNow(
+                    viewportHeight: geometry.size.height,
+                    gridHeight: gridHeight,
+                    paddingHeight: paddingHeight
+                )
+            }
         }
         .padding(.top, 4)
         .ignoresSafeArea(edges: .bottom)
@@ -477,8 +520,8 @@ struct SwipeableScheduleView: View {
     
     // MARK: - All-Day Events
     
-    /// Create segment cards for all all-day events
-    private func createAllDaySegments() -> [AllDaySegmentCard] {
+    /// Create all-day events for the schedule (one AllDayEvent per all-day DisplayEvent).
+    private func createAllDaySegments() -> [AllDayEvent] {
         return events.filter { $0.event.isAllDay && !$0.isHidden }.compactMap { event in
             guard let startDateString = event.event.start?.date,
                   let eventStartDate = allDayDateFormatter.date(from: startDateString) else {
@@ -500,7 +543,7 @@ struct SwipeableScheduleView: View {
             let spanDays = max(1, calendar.dateComponents([.day], from: eventStartDay, to: eventEndDay).day ?? 1)
             let isSpanning = spanDays > 1
             
-            return AllDaySegmentCard(
+            return AllDayEvent(
                 id: "\(event.id)-allday",
                 event: event,
                 eventID: event.id,
@@ -553,9 +596,9 @@ struct SwipeableScheduleView: View {
         return rows
     }
     
-    /// Get the day indices that an all-day segment occupies
+    /// Get the day indices that an all-day event occupies
     /// Optimized O(1) calculation instead of iterating all days
-    private func getDayIndicesForAllDay(_ segment: AllDaySegmentCard) -> [Int] {
+    private func getDayIndicesForAllDay(_ segment: AllDayEvent) -> [Int] {
         // Calculate day offset from reference date using date math
         let startOffset = calendar.dateComponents([.day], from: normalizedReferenceDate, to: segment.eventStartDay).day ?? 0
         let endOffset = calendar.dateComponents([.day], from: normalizedReferenceDate, to: segment.eventEndDay).day ?? 0
@@ -622,9 +665,9 @@ struct SwipeableScheduleView: View {
         }
     }
     
-    /// True iff the segment's drawn rect intersects [viewportStart, viewportEnd].
+    /// True iff the all-day event's drawn rect intersects [viewportStart, viewportEnd].
     private func segmentIntersectsViewport(
-        segment: AllDaySegmentCard,
+        segment: AllDayEvent,
         viewportStart: CGFloat,
         viewportEnd: CGFloat,
         dayColumnWidth: CGFloat
@@ -681,7 +724,7 @@ struct SwipeableScheduleView: View {
     /// Render an individual all-day event card with sticky title
     @ViewBuilder
     private func allDayEventCard(
-        segment: AllDaySegmentCard,
+        segment: AllDayEvent,
         dayColumnWidth: CGFloat,
         horizontalOffset: CGFloat,
         viewportWidth: CGFloat
@@ -694,7 +737,7 @@ struct SwipeableScheduleView: View {
             
             let title = segment.event.event.title?.isEmpty == false ? segment.event.event.title! : "Untitled Event"
             let calendarColor = segment.event.event.calendarColor.flatMap { Color.fromHex($0) }
-            let style = cardStyle(for: segment.event.style)
+            let style: ScheduleEventCard.Style = isEventPast(segment.event) ? .past : cardStyle(for: segment.event.style)
             
             // Calculate sticky title offset
             let stickyOffset = calculateStickyTitleOffset(
@@ -704,7 +747,7 @@ struct SwipeableScheduleView: View {
                 dayColumnWidth: dayColumnWidth
             )
             
-            StickyTitleAllDayCard(
+            AllDayEventCard(
                 title: title,
                 calendarColor: calendarColor,
                 style: style,
@@ -751,7 +794,7 @@ struct SwipeableScheduleView: View {
         if let layout = eventLayout(for: event, on: dayDate, dayColumnWidth: dayColumnWidth) {
             let title = event.event.title?.isEmpty == false ? event.event.title! : "Untitled Event"
             let calendarColor = event.event.calendarColor.flatMap { Color.fromHex($0) }
-            let style: ScheduleEventCard.Style = cardStyle(for: event.style)
+            let style: ScheduleEventCard.Style = isEventPast(event) ? .past : cardStyle(for: event.style)
             
             ScheduleEventCard(
                 title: title,
@@ -818,6 +861,20 @@ struct SwipeableScheduleView: View {
         )
     }
     
+    /// True if the event's end time has passed (timed or all-day).
+    private func isEventPast(_ event: DisplayEvent) -> Bool {
+        let now = Date()
+        if let endTime = event.event.end?.dateTime {
+            return endTime < now
+        }
+        if let endDateString = event.event.end?.date,
+           let parsedEnd = allDayDateFormatter.date(from: endDateString) {
+            let eventEndDay = calendar.startOfDay(for: parsedEnd)
+            return now >= eventEndDay
+        }
+        return false
+    }
+    
     /// Convert DisplayEvent style to ScheduleEventCard style
     private func cardStyle(for style: DisplayEvent.Style?) -> ScheduleEventCard.Style {
         switch style {
@@ -840,7 +897,8 @@ struct SwipeableScheduleView: View {
     private func dateHeadersContent(
         dayColumnWidth: CGFloat
     ) -> some View {
-        // Use LazyHStack for performance - only renders visible date labels
+        // Use LazyHStack for performance - only renders visible date labels.
+        // transition(.identity) prevents recycled cells from animating in from wrong positions when swiping.
         LazyHStack(alignment: .top, spacing: 0) {
             ForEach(0..<totalDayCount, id: \.self) { dayIndex in
                 let date = dateForDayIndex(dayIndex)
@@ -848,8 +906,10 @@ struct SwipeableScheduleView: View {
                     .font(.footnote.weight(.semibold))
                     .foregroundStyle(ColorPalette.Text.secondary)
                     .frame(width: dayColumnWidth, height: 18, alignment: .leading)
+                    .transition(.identity)
             }
         }
+        .animation(nil, value: horizontalOffset)
     }
     
     // MARK: - Hour Labels Content (Row Labels)
@@ -895,6 +955,32 @@ struct SwipeableScheduleView: View {
         return spaceToMicrophoneTop + (isModalVisible ? (modalHeight + modalMicrophoneGap) : 0)
     }
     
+    // MARK: - Current Time Line (Today Column)
+
+    /// Horizontal line at the current time on the today column, styled with the theme orange gradient.
+    @ViewBuilder
+    private func currentTimeLineView(dayColumnWidth: CGFloat, gridHeight: CGFloat) -> some View {
+        TimelineView(.periodic(from: .now, by: 60)) { context in
+            let now = context.date
+            let hour = calendar.component(.hour, from: now)
+            let minute = calendar.component(.minute, from: now)
+            let fractionOfDay = CGFloat(hour) + CGFloat(minute) / 60.0
+            let y = timelineTopInset + hourHeight * fractionOfDay
+            let lineHeight: CGFloat = 2
+            if y >= timelineTopInset && y <= timelineTopInset + hourHeight * CGFloat(hours.count) {
+                Rectangle()
+                    .fill(ColorPalette.Gradients.primary)
+                    .frame(width: dayColumnWidth, height: lineHeight)
+                    .frame(width: dayColumnWidth, height: gridHeight, alignment: .topLeading)
+                    .offset(y: y - lineHeight / 2)
+            } else {
+                Color.clear
+            }
+        }
+        .frame(width: dayColumnWidth, height: gridHeight)
+        .allowsHitTesting(false)
+    }
+
     // MARK: - Helpers
     
     private func dateForDayIndex(_ dayIndex: Int) -> Date {
@@ -902,11 +988,24 @@ struct SwipeableScheduleView: View {
         return calendar.date(byAdding: .day, value: offset, to: normalizedReferenceDate) ?? normalizedReferenceDate
     }
     
+    /// Day index for a given date (clamped to valid range)
+    private func dayIndexForDate(_ date: Date) -> Int {
+        let targetStartOfDay = calendar.startOfDay(for: date)
+        let dayOffset = calendar.dateComponents([.day], from: normalizedReferenceDate, to: targetStartOfDay).day ?? 0
+        let index = dayRangeOffset + dayOffset
+        return max(0, min(totalDayCount - 1, index))
+    }
+    
     /// Check if a date falls on a weekend (Saturday or Sunday)
     private func isWeekendDay(_ date: Date) -> Bool {
         let weekday = calendar.component(.weekday, from: date)
         // Sunday = 1, Saturday = 7
         return weekday == 1 || weekday == 7
+    }
+    
+    /// Check if a date is today (same calendar day as now)
+    private func isToday(_ date: Date) -> Bool {
+        calendar.isDateInToday(date)
     }
     
     private func hourLabel(for hour: Int) -> String {
@@ -938,7 +1037,7 @@ struct SwipeableScheduleView: View {
         // horizontalOffset is negative when scrolled right (viewing later days)
         // viewportStart is where the visible area begins in content coordinates
         let viewportStart = -horizontalOffset
-        let titlePadding: CGFloat = 8  // Match StickyTitleAllDayCard horizontalPadding (leading + trailing)
+        let titlePadding: CGFloat = 8  // Match AllDayEventCard horizontalPadding (leading + trailing)
         // One day's card width = day column minus event inset; title has titlePadding on each side inside that
         let oneDayCardWidth = dayColumnWidth - horizontalEventInset
         // Minimum space for title = one day's full title area (card width minus trailing padding used in clamp below)
@@ -954,6 +1053,177 @@ struct SwipeableScheduleView: View {
         // Clamp so title doesn't go past the card's visible right edge (reserve minTitleWidth + titlePadding = oneDayCardWidth)
         let maxOffset = cardWidth - minTitleWidth - titlePadding
         return min(rawOffset, max(0, maxOffset))
+    }
+    
+    // MARK: - Scroll Functions
+    
+    /// Invisible anchor views for programmatic vertical scrolling (15-minute intervals)
+    @ViewBuilder
+    private func scrollAnchorsOverlay(
+        gridHeight: CGFloat,
+        paddingHeight: CGFloat,
+        viewportWidth: CGFloat
+    ) -> some View {
+        let totalContentHeight = gridHeight + paddingHeight
+        
+        VStack(spacing: 0) {
+            // Special anchor at the very top of the scrollable view (Y=0)
+            Color.clear
+                .frame(width: 1, height: 1)
+                .id("scroll-top")
+            
+            // Hour anchors at 15-minute intervals (0.00, 0.25, 0.50, 0.75, 1.00, ...)
+            ForEach(0..<(24 * 4), id: \.self) { index in
+                let hourFraction = Double(index) / 4.0
+                let yPosition = timelineTopInset + hourHeight * CGFloat(hourFraction)
+                let anchorID = String(format: "hour-%.2f", hourFraction)
+                
+                if index == 0 {
+                    // First anchor: add spacer to position at yPosition from top
+                    Spacer()
+                        .frame(height: yPosition)
+                    Color.clear
+                        .frame(width: 1, height: 1)
+                        .id(anchorID)
+                } else {
+                    // Subsequent anchors: spacing is 15 minutes = hourHeight/4
+                    Color.clear
+                        .frame(width: 1, height: hourHeight / 4.0)
+                        .id(anchorID)
+                }
+            }
+            
+            // Fill remaining space to reach total content height
+            Spacer()
+                .frame(height: max(0, totalContentHeight - (timelineTopInset + hourHeight * 24)))
+            
+            // Special anchor at the very bottom of the scrollable view
+            Color.clear
+                .frame(width: 1, height: 1)
+                .id("scroll-bottom")
+        }
+        .frame(width: viewportWidth, height: totalContentHeight, alignment: .topLeading)
+        .allowsHitTesting(false)
+    }
+    
+    /// Scroll horizontally to a specific date
+    private func scrollToDate(_ date: Date) {
+        let targetIndex = dayIndexForDate(date)
+        withAnimation(.easeInOut(duration: 0.22)) {
+            scrolledDayIndex = targetIndex
+        }
+    }
+    
+    /// Scroll vertically to a specific hour (rounded to nearest 15 minutes)
+    private func scrollToTimeDiscrete(
+        hour: Double,
+        viewportHeight: CGFloat,
+        gridHeight: CGFloat,
+        paddingHeight: CGFloat
+    ) {
+        guard let proxy = verticalScrollProxy else { return }
+        
+        // Round to nearest 15 minutes (discrete anchor interval)
+        let anchorInterval: Double = 0.25  // 15 minutes in hours
+        let roundedHour = (hour / anchorInterval).rounded() * anchorInterval
+        let anchorID = String(format: "hour-%.2f", roundedHour)
+        
+        // Calculate where this anchor appears in content space
+        let anchorY = timelineTopInset + hourHeight * CGFloat(roundedHour)
+        
+        // Target: position this time at 1/6 from viewport top
+        let targetY = viewportHeight / 6.0
+        let totalContentHeight = gridHeight + paddingHeight
+        
+        // Edge case: if time is too early to position at targetY, scroll to very top
+        if anchorY < targetY {
+            let topAnchorID = "scroll-top"
+            withAnimation(.easeInOut(duration: 0.22)) {
+                proxy.scrollTo(topAnchorID, anchor: .top)
+            }
+            return
+        }
+        
+        // Edge case: if time is too late to position at targetY, scroll to very bottom
+        let maxScrollableOffset = max(0, totalContentHeight - viewportHeight)
+        if anchorY - targetY > maxScrollableOffset {
+            let bottomAnchorID = "scroll-bottom"
+            withAnimation(.easeInOut(duration: 0.22)) {
+                proxy.scrollTo(bottomAnchorID, anchor: .top)
+            }
+            return
+        }
+        
+        // For normal case - Calculate which anchor to scroll to achieve ~1/6 positioning
+        // We want the target time to appear at viewport Y=targetY (1/6 from top)
+        let desiredScrollAnchorY = anchorY - targetY
+        
+        // Ensure desiredScrollAnchorY is valid
+        guard desiredScrollAnchorY >= timelineTopInset else {
+            withAnimation(.easeInOut(duration: 0.22)) {
+                proxy.scrollTo(anchorID, anchor: .top)
+            }
+            return
+        }
+        
+        // Find the anchor closest to this calculated Y position
+        let scrollAnchorHour = Double((desiredScrollAnchorY - timelineTopInset) / hourHeight)
+        let roundedDown = (scrollAnchorHour / anchorInterval).rounded(.down) * anchorInterval
+        let roundedUp = (scrollAnchorHour / anchorInterval).rounded(.up) * anchorInterval
+        
+        // Calculate which rounding gets closer to targetY
+        let anchorYDown = timelineTopInset + hourHeight * CGFloat(roundedDown)
+        let anchorYUp = timelineTopInset + hourHeight * CGFloat(roundedUp)
+        let viewportYDown = anchorY - anchorYDown
+        let viewportYUp = anchorY - anchorYUp
+        let errorDown = abs(viewportYDown - targetY)
+        let errorUp = abs(viewportYUp - targetY)
+        
+        let scrollRoundedHour = errorDown < errorUp ? roundedDown : roundedUp
+        
+        // Ensure scrollRoundedHour is valid (non-negative, reasonable)
+        guard scrollRoundedHour >= 0 && scrollRoundedHour < 24 else {
+            withAnimation(.easeInOut(duration: 0.22)) {
+                proxy.scrollTo(anchorID, anchor: .top)
+            }
+            return
+        }
+        
+        let scrollAnchorID = String(format: "hour-%.2f", scrollRoundedHour)
+        
+        withAnimation(.easeInOut(duration: 0.22)) {
+            proxy.scrollTo(scrollAnchorID, anchor: .top)
+        }
+    }
+    
+    /// Scroll to current date and time (today + now)
+    private func scrollToNow(
+        viewportHeight: CGFloat,
+        gridHeight: CGFloat,
+        paddingHeight: CGFloat
+    ) {
+        let now = Date()
+        
+        // Compute current time as fractional hour
+        let hour = calendar.component(.hour, from: now)
+        let minute = calendar.component(.minute, from: now)
+        let second = calendar.component(.second, from: now)
+        let currentHour = Double(hour) + Double(minute) / 60.0 + Double(second) / 3600.0
+        
+        // Step 1: Scroll horizontally to today first
+        scrollToDate(now)
+        
+        // Step 2: After horizontal scroll completes, scroll vertically to current time
+        // Wait for horizontal animation (0.22s) + small buffer before starting vertical scroll
+        Task { @MainActor in
+            try? await Task.sleep(nanoseconds: 260_000_000) // 0.26 seconds
+            scrollToTimeDiscrete(
+                hour: currentHour,
+                viewportHeight: viewportHeight,
+                gridHeight: gridHeight,
+                paddingHeight: paddingHeight
+            )
+        }
     }
 }
 

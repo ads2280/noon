@@ -149,7 +149,7 @@ struct NDayScheduleView: View {
 
     @ViewBuilder
     private func allDayEventsSection(
-        segmentCards: [EventSegmentCard],
+        segmentCards: [EventSegment],
         columnLeadings: [CGFloat],
         dayColumnWidth: CGFloat,
         gridLeading: CGFloat,
@@ -209,7 +209,7 @@ struct NDayScheduleView: View {
     }
     
     private func allDayEventCard(
-        segment: EventSegmentCard,
+        segment: EventSegment,
         columnLeadings: [CGFloat],
         dayColumnWidth: CGFloat,
         gridLeading: CGFloat,
@@ -333,7 +333,7 @@ struct NDayScheduleView: View {
 
     @ViewBuilder
     private func scheduleScrollView(
-        segmentCards: [EventSegmentCard],
+        segmentCards: [EventSegment],
         totalEventWidth: CGFloat,
         gridLeading: CGFloat,
         dayColumnWidth: CGFloat,
@@ -824,7 +824,7 @@ struct NDayScheduleView: View {
     
     // MARK: - All-Day Event Row Packing
     
-    fileprivate func getDayIndices(for segment: EventSegmentCard, dates: [Date]) -> [Int] {
+    fileprivate func getDayIndices(for segment: EventSegment, dates: [Date]) -> [Int] {
         if segment.isSpanning {
             // For spanning events, find all overlapping day indices
             guard let startDateString = segment.event.event.start?.date else {
@@ -869,7 +869,7 @@ struct NDayScheduleView: View {
         }
     }
     
-    fileprivate func packAllDayEventsIntoRows(_ segments: [EventSegmentCard], dates: [Date]) -> [AllDayEventRow] {
+    fileprivate func packAllDayEventsIntoRows(_ segments: [EventSegment], dates: [Date]) -> [AllDayEventRow] {
         var rows: [AllDayEventRow] = []
         var rowOccupiedDays: [[Int]] = [] // Track which day indices each row occupies
         
@@ -924,7 +924,7 @@ private extension NDayScheduleView {
         let columnCount: Int
     }
     
-    struct EventSegmentCard: Identifiable {
+    struct EventSegment: Identifiable {
         let id: String  // Unique per segment: "\(event.id)-\(dayIndex)" for tracking
         let event: DisplayEvent  // Original event
         let eventID: String  // event.id - shared across all segments of same event
@@ -937,7 +937,7 @@ private extension NDayScheduleView {
     }
     
     struct AllDayEventRow {
-        var segments: [EventSegmentCard]
+        var segments: [EventSegment]
         let rowIndex: Int
     }
     
@@ -955,7 +955,7 @@ private extension NDayScheduleView {
     
     @ViewBuilder
     func timedEventsLayer(
-        segmentCards: [EventSegmentCard],
+        segmentCards: [EventSegment],
         dates: [Date],
         columnLeadings: [CGFloat],
         totalEventWidth: CGFloat,
@@ -989,7 +989,7 @@ private extension NDayScheduleView {
     private func dayTimedEventsLayer(
         dayIndex: Int,
         day: Date,
-        timedSegments: [EventSegmentCard],
+        timedSegments: [EventSegment],
         columnLeading: CGFloat,
         totalEventWidth: CGFloat,
         gridLeading: CGFloat,
@@ -1021,7 +1021,7 @@ private extension NDayScheduleView {
     
     @ViewBuilder
     private func segmentEventCard(
-        segment: EventSegmentCard,
+        segment: EventSegment,
         columnLayout: [String: ColumnLayoutInfo],
         dayColWidth: CGFloat,
         columnLeading: CGFloat,
@@ -1104,9 +1104,9 @@ private extension NDayScheduleView {
     // MARK: - Overlap Column Layout
     
     /// Computes an overlap-aware column layout for a day's timed segments.
-    /// Returns a dictionary keyed by `EventSegmentCard.id` containing column index and total column count
+    /// Returns a dictionary keyed by `EventSegment.id` containing column index and total column count
     /// for the cluster that segment belongs to.
-    func computeColumnLayout(for segments: [EventSegmentCard]) -> [String: ColumnLayoutInfo] {
+    func computeColumnLayout(for segments: [EventSegment]) -> [String: ColumnLayoutInfo] {
         var layout: [String: ColumnLayoutInfo] = [:]
         guard !segments.isEmpty else { return layout }
         
@@ -1123,7 +1123,7 @@ private extension NDayScheduleView {
         }
         
         // Build clusters of overlapping segments
-        var currentCluster: [EventSegmentCard] = []
+        var currentCluster: [EventSegment] = []
         var currentClusterEnd: Date? = nil
         
         func finalizeCurrentCluster() {
@@ -1167,7 +1167,7 @@ private extension NDayScheduleView {
     
     /// Assigns segments in a cluster to columns using a greedy interval-coloring algorithm.
     /// Returns a dictionary keyed by segment id with its column index and total column count.
-    private func assignColumns(to cluster: [EventSegmentCard]) -> [String: ColumnLayoutInfo] {
+    private func assignColumns(to cluster: [EventSegment]) -> [String: ColumnLayoutInfo] {
         guard !cluster.isEmpty else { return [:] }
         
         // Sort cluster by start time for deterministic assignment
@@ -1226,9 +1226,9 @@ private extension NDayScheduleView {
     /// Orders segments for a day so that segments with higher columnIndex (rightmost)
     /// are drawn later and appear on top, with stable ordering within a column.
     private func orderedSegmentsForDay(
-        _ segments: [EventSegmentCard],
+        _ segments: [EventSegment],
         columnLayout: [String: ColumnLayoutInfo]
-    ) -> [EventSegmentCard] {
+    ) -> [EventSegment] {
         return segments.sorted { lhs, rhs in
             let lhsInfo = columnLayout[lhs.id]
             let rhsInfo = columnLayout[rhs.id]
@@ -1255,8 +1255,8 @@ private extension NDayScheduleView {
     
     // MARK: - Segment Card Generation
     
-    func generateSegmentCards(from events: [DisplayEvent], dates: [Date]) -> [EventSegmentCard] {
-        var segments: [EventSegmentCard] = []
+    func generateSegmentCards(from events: [DisplayEvent], dates: [Date]) -> [EventSegment] {
+        var segments: [EventSegment] = []
         
         for event in events where !event.isHidden {
             if event.event.isAllDay {
@@ -1273,13 +1273,13 @@ private extension NDayScheduleView {
         return segments
     }
     
-    func splitTimedEventToSegments(_ event: DisplayEvent, dates: [Date]) -> [EventSegmentCard] {
+    func splitTimedEventToSegments(_ event: DisplayEvent, dates: [Date]) -> [EventSegment] {
         guard let startDateTime = event.event.start?.dateTime,
               let endDateTime = event.event.end?.dateTime else {
             return []
         }
         
-        var segments: [EventSegmentCard] = []
+        var segments: [EventSegment] = []
         
         for (index, day) in dates.enumerated() {
             let startOfDay = calendar.startOfDay(for: day)
@@ -1294,7 +1294,7 @@ private extension NDayScheduleView {
                 let segmentEndTime = min(endDateTime, endOfDay)
                 
                 let segmentID = "\(event.id)-\(index)"
-                let segment = EventSegmentCard(
+                let segment = EventSegment(
                     id: segmentID,
                     event: event,
                     eventID: event.id,
@@ -1312,7 +1312,7 @@ private extension NDayScheduleView {
         return segments
     }
     
-    func createAllDaySegmentCard(_ event: DisplayEvent, dates: [Date]) -> EventSegmentCard? {
+    func createAllDaySegmentCard(_ event: DisplayEvent, dates: [Date]) -> EventSegment? {
         guard event.event.isAllDay else {
             return nil
         }
@@ -1365,7 +1365,7 @@ private extension NDayScheduleView {
         // For all-day events, use the first overlapping day
         // startTime and endTime are nil for all-day events
         let segmentID = "\(event.id)-allday"
-        return EventSegmentCard(
+        return EventSegment(
             id: segmentID,
             event: event,
             eventID: event.id,
@@ -1378,7 +1378,7 @@ private extension NDayScheduleView {
         )
     }
 
-    func layoutInfo(for segment: EventSegmentCard, focusEvent: ScheduleFocusEvent?, selectedEvent: CalendarEvent?) -> EventLayout? {
+    func layoutInfo(for segment: EventSegment, focusEvent: ScheduleFocusEvent?, selectedEvent: CalendarEvent?) -> EventLayout? {
         // All-day events are handled separately, not in timeline
         guard !segment.isAllDay else { return nil }
         
