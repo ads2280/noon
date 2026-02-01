@@ -34,7 +34,11 @@ struct AgentView: View {
                 onVisibleDaysChanged: { date in
                     viewModel.onVisibleDaysChanged(firstVisibleDate: date)
                 },
-                scrollToNowTrigger: $scrollToNowTrigger
+                scrollToNowTrigger: $scrollToNowTrigger,
+                scrollTarget: Binding(
+                    get: { viewModel.scrollTarget },
+                    set: { viewModel.scrollTarget = $0 }
+                )
             )
             .padding(.horizontal, 4)
             .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)

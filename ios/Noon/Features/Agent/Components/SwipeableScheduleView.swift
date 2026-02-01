@@ -227,6 +227,7 @@ struct SwipeableScheduleView: View {
     let events: [DisplayEvent]
     let onVisibleDaysChanged: ((Date) -> Void)?
     @Binding var scrollToNowTrigger: Int
+    @Binding var scrollTarget: ScheduleScrollTarget?
 
     private let hours = Array(0..<24)
     
@@ -279,12 +280,14 @@ struct SwipeableScheduleView: View {
         userTimezone: String? = nil,
         modalBottomPadding: CGFloat = 0,
         onVisibleDaysChanged: ((Date) -> Void)? = nil,
-        scrollToNowTrigger: Binding<Int> = .constant(0)
+        scrollToNowTrigger: Binding<Int> = .constant(0),
+        scrollTarget: Binding<ScheduleScrollTarget?> = .constant(nil)
     ) {
         self.userTimezone = userTimezone
         self.events = events
         self.onVisibleDaysChanged = onVisibleDaysChanged
         self._scrollToNowTrigger = scrollToNowTrigger
+        self._scrollTarget = scrollTarget
         
         // Create and cache calendar once
         if let userTimezone = userTimezone, let timeZone = TimeZone(identifier: userTimezone) {
@@ -482,11 +485,29 @@ struct SwipeableScheduleView: View {
             }
             .onAppear {
                 if !hasScrolledToInitial {
-                    scrolledDayIndex = initialDayIndex
+                    let now = Date()
+                    scrolledDayIndex = dayIndexForDate(now)
                     hasScrolledToInitial = true
                     // Notify initial visible date
-                    let initialDate = dateForDayIndex(initialDayIndex)
+                    let initialDate = dateForDayIndex(scrolledDayIndex ?? initialDayIndex)
                     onVisibleDaysChanged?(initialDate)
+                    // Defer vertical scroll to current time until proxy is ready
+                    let hour = calendar.component(.hour, from: now)
+                    let minute = calendar.component(.minute, from: now)
+                    let second = calendar.component(.second, from: now)
+                    let currentHour = Double(hour) + Double(minute) / 60.0 + Double(second) / 3600.0
+                    let vh = geometry.size.height
+                    let gh = gridHeight
+                    let ph = paddingHeight
+                    Task { @MainActor in
+                        try? await Task.sleep(nanoseconds: 100_000_000)
+                        scrollToTimeDiscrete(
+                            hour: currentHour,
+                            viewportHeight: vh,
+                            gridHeight: gh,
+                            paddingHeight: ph
+                        )
+                    }
                 }
                 // Initialize cached all-day rows
                 cachedAllDayRows = computeAllDayRows()
@@ -512,6 +533,16 @@ struct SwipeableScheduleView: View {
                     gridHeight: gridHeight,
                     paddingHeight: paddingHeight
                 )
+            }
+            .onChange(of: scrollTarget) { _, newTarget in
+                guard let target = newTarget else { return }
+                scrollToTarget(
+                    target: target,
+                    viewportHeight: geometry.size.height,
+                    gridHeight: gridHeight,
+                    paddingHeight: paddingHeight
+                )
+                scrollTarget = nil
             }
         }
         .padding(.top, 4)
@@ -1193,6 +1224,27 @@ struct SwipeableScheduleView: View {
         
         withAnimation(.easeInOut(duration: 0.22)) {
             proxy.scrollTo(scrollAnchorID, anchor: .top)
+        }
+    }
+    
+    /// Scroll to a specific date and optionally time (from agent action handlers)
+    private func scrollToTarget(
+        target: ScheduleScrollTarget,
+        viewportHeight: CGFloat,
+        gridHeight: CGFloat,
+        paddingHeight: CGFloat
+    ) {
+        scrollToDate(target.date)
+        if let hour = target.timeOfDay {
+            Task { @MainActor in
+                try? await Task.sleep(nanoseconds: 260_000_000) // 0.26 seconds (match scrollToNow)
+                scrollToTimeDiscrete(
+                    hour: hour,
+                    viewportHeight: viewportHeight,
+                    gridHeight: gridHeight,
+                    paddingHeight: paddingHeight
+                )
+            }
         }
     }
     
