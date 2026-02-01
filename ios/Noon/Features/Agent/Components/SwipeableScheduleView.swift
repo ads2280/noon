@@ -700,7 +700,8 @@ struct SwipeableScheduleView: View {
             let stickyOffset = calculateStickyTitleOffset(
                 horizontalOffset: horizontalOffset,
                 cardOffsetX: offsetX,
-                cardWidth: cardWidth
+                cardWidth: cardWidth,
+                dayColumnWidth: dayColumnWidth
             )
             
             StickyTitleAllDayCard(
@@ -931,13 +932,17 @@ struct SwipeableScheduleView: View {
     private func calculateStickyTitleOffset(
         horizontalOffset: CGFloat,
         cardOffsetX: CGFloat,
-        cardWidth: CGFloat
+        cardWidth: CGFloat,
+        dayColumnWidth: CGFloat
     ) -> CGFloat {
         // horizontalOffset is negative when scrolled right (viewing later days)
         // viewportStart is where the visible area begins in content coordinates
         let viewportStart = -horizontalOffset
-        let titlePadding: CGFloat = 8  // Match ScheduleEventCard horizontal padding
-        let minTitleWidth: CGFloat = 60  // Minimum space for title before it slides off right edge
+        let titlePadding: CGFloat = 8  // Match StickyTitleAllDayCard horizontalPadding (leading + trailing)
+        // One day's card width = day column minus event inset; title has titlePadding on each side inside that
+        let oneDayCardWidth = dayColumnWidth - horizontalEventInset
+        // Minimum space for title = one day's full title area (card width minus trailing padding used in clamp below)
+        let minTitleWidth = oneDayCardWidth - titlePadding
         
         // If card's left edge is off-screen, push title right
         guard viewportStart > cardOffsetX else { return 0 }
@@ -946,7 +951,7 @@ struct SwipeableScheduleView: View {
         // from the viewport edge as the natural title has from the card edge
         let insetOffset = horizontalEventInset / 2
         let rawOffset = viewportStart - cardOffsetX + insetOffset
-        // Clamp so title doesn't go past the card's visible right edge
+        // Clamp so title doesn't go past the card's visible right edge (reserve minTitleWidth + titlePadding = oneDayCardWidth)
         let maxOffset = cardWidth - minTitleWidth - titlePadding
         return min(rawOffset, max(0, maxOffset))
     }
