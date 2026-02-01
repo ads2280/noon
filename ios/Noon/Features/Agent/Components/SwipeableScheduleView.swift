@@ -266,6 +266,9 @@ struct SwipeableScheduleView: View {
     // Vertical scroll proxy for programmatic scrolling
     @State private var verticalScrollProxy: ScrollViewProxy?
     
+    /// True while a programmatic scroll (scrollToNow or scrollTarget) is in progress; freezes user scroll
+    @State private var isProgrammaticScrolling: Bool = false
+    
     // normalizedReferenceDate is just referenceDate since it's already normalized in init
     private var normalizedReferenceDate: Date { referenceDate }
     
@@ -449,6 +452,7 @@ struct SwipeableScheduleView: View {
                                     }
                                     .scrollTargetBehavior(.viewAligned)
                                     .scrollPosition(id: $scrolledDayIndex, anchor: .leading)
+                                    .scrollDisabled(isProgrammaticScrolling)
                                     .frame(height: gridHeight) // CRITICAL: explicit height for gesture pass-through
                                     .onScrollGeometryChange(for: CGFloat.self) { geo in
                                         geo.contentOffset.x
@@ -470,6 +474,7 @@ struct SwipeableScheduleView: View {
                             }
                         }
                         .scrollBounceBehavior(.basedOnSize)
+                        .scrollDisabled(isProgrammaticScrolling)
                         .onScrollGeometryChange(for: CGFloat.self) { geo in
                             geo.contentOffset.y
                         } action: { _, newValue in
@@ -488,6 +493,7 @@ struct SwipeableScheduleView: View {
                     let now = Date()
                     scrolledDayIndex = dayIndexForDate(now)
                     hasScrolledToInitial = true
+                    isProgrammaticScrolling = true
                     // Notify initial visible date
                     let initialDate = dateForDayIndex(scrolledDayIndex ?? initialDayIndex)
                     onVisibleDaysChanged?(initialDate)
@@ -507,6 +513,8 @@ struct SwipeableScheduleView: View {
                             gridHeight: gh,
                             paddingHeight: ph
                         )
+                        try? await Task.sleep(nanoseconds: 250_000_000) // let vertical animation finish
+                        isProgrammaticScrolling = false
                     }
                 }
                 // Initialize cached all-day rows
@@ -527,7 +535,7 @@ struct SwipeableScheduleView: View {
                 }
             }
             .onChange(of: scrollToNowTrigger) { _, _ in
-                // Trigger scroll to current date/time when parent increments the trigger
+                isProgrammaticScrolling = true
                 scrollToNow(
                     viewportHeight: geometry.size.height,
                     gridHeight: gridHeight,
@@ -536,13 +544,20 @@ struct SwipeableScheduleView: View {
             }
             .onChange(of: scrollTarget) { _, newTarget in
                 guard let target = newTarget else { return }
-                scrollToTarget(
-                    target: target,
-                    viewportHeight: geometry.size.height,
-                    gridHeight: gridHeight,
-                    paddingHeight: paddingHeight
-                )
+                isProgrammaticScrolling = true
                 scrollTarget = nil
+                // Defer scroll so the view re-renders with scrollDisabled(true) before we animate
+                let vh = geometry.size.height
+                let gh = gridHeight
+                let ph = paddingHeight
+                Task { @MainActor in
+                    scrollToTarget(
+                        target: target,
+                        viewportHeight: vh,
+                        gridHeight: gh,
+                        paddingHeight: ph
+                    )
+                }
             }
         }
         .padding(.top, 4)
@@ -1244,6 +1259,13 @@ struct SwipeableScheduleView: View {
                     gridHeight: gridHeight,
                     paddingHeight: paddingHeight
                 )
+                try? await Task.sleep(nanoseconds: 250_000_000) // let vertical animation finish
+                isProgrammaticScrolling = false
+            }
+        } else {
+            Task { @MainActor in
+                try? await Task.sleep(nanoseconds: 250_000_000) // let horizontal animation finish
+                isProgrammaticScrolling = false
             }
         }
     }
@@ -1275,6 +1297,8 @@ struct SwipeableScheduleView: View {
                 gridHeight: gridHeight,
                 paddingHeight: paddingHeight
             )
+            try? await Task.sleep(nanoseconds: 250_000_000) // let vertical animation finish
+            isProgrammaticScrolling = false
         }
     }
 }
