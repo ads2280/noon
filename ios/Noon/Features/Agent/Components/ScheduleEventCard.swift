@@ -15,6 +15,7 @@ struct ScheduleEventCard: View {
         case update
         case destructive
         case new
+        case past
     }
 
     let title: String
@@ -63,6 +64,8 @@ struct ScheduleEventCard: View {
                 opacity = 0.45  // Boosted saturation for highlight and update styles to make them more eye-catching
             } else if style == .destructive {
                 opacity = 0.3  // Darker for destructive style
+            } else if style == .past {
+                opacity = 0.15  // More muted for past events
             } else {
                 opacity = 0.2
             }
@@ -134,9 +137,9 @@ struct ScheduleEventCard: View {
 
     private var shadowAttributes: (color: Color, radius: CGFloat, x: CGFloat, y: CGFloat) {
         // Always use shadow with the appropriate color (calendar color or default black)
-        // Standard style cards still get a shadow, just more subtle
-        let radius: CGFloat = style == .standard ? 8 : 14
-        let y: CGFloat = style == .standard ? 5 : 10
+        // Standard and past style cards use more subtle shadow
+        let radius: CGFloat = (style == .standard || style == .past) ? 8 : 14
+        let y: CGFloat = (style == .standard || style == .past) ? 5 : 10
         return (shadowColor, radius, 0, y)
     }
 }
@@ -157,6 +160,8 @@ private extension ScheduleEventCard {
             return ColorPalette.Text.primary
         case .destructive:
             return ColorPalette.Text.primary.opacity(0.55)
+        case .past:
+            return ColorPalette.Text.secondary.opacity(0.75)
         }
     }
 
@@ -166,12 +171,14 @@ private extension ScheduleEventCard {
             return ColorPalette.Text.secondary.opacity(0.75)
         case .destructive:
             return ColorPalette.Text.secondary.opacity(0.5)
+        case .past:
+            return ColorPalette.Text.secondary.opacity(0.6)
         }
     }
 
     var strikeColor: Color {
         switch style {
-        case .standard, .highlight, .update, .new:
+        case .standard, .highlight, .update, .new, .past:
             return .clear
         case .destructive:
             return ColorPalette.Text.secondary.opacity(0.7)
@@ -181,9 +188,11 @@ private extension ScheduleEventCard {
     @ViewBuilder
     var borderOverlay: some View {
         let shape = RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
-        // Use muted destructive color for destructive style, otherwise use calendar color
+        // Use muted destructive color for destructive style, muted for past, otherwise use calendar color
         let borderColor: Color = style == .destructive
             ? ColorPalette.Surface.destructiveMuted
+            : style == .past
+            ? (calendarColor?.opacity(0.4) ?? ColorPalette.Text.secondary.opacity(0.3))
             : (calendarColor ?? ColorPalette.Text.secondary.opacity(0.45))
         
         // Use dashed border for update/new styles, solid for others
@@ -199,9 +208,9 @@ private extension ScheduleEventCard {
     
     @ViewBuilder
     var glowOverlay: some View {
-        // Add glow effect for new, highlight, and update styles
+        // Add glow effect for new, highlight, and update styles (not for past)
         // This appears behind the card, creating a glow effect around the edges
-        if (style == .new || style == .highlight || style == .update), let calendarColor = calendarColor {
+        if (style == .new || style == .highlight || style == .update), style != .past, let calendarColor = calendarColor {
             let shape = RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
             // Create an outer glow effect using a blurred stroke with increased intensity
             // The glow extends beyond the card bounds and appears behind it
