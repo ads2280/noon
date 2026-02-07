@@ -6,18 +6,6 @@ import logging
 from typing import Any, Dict, Optional
 
 from fastapi import HTTPException
-
-import sys
-from pathlib import Path
-
-# Add parent directory to path to import from agent package
-_parent_dir = Path(__file__).parent.parent.parent
-if str(_parent_dir) not in sys.path:
-    sys.path.insert(0, str(_parent_dir))
-
-# Import schemas - agent/__init__.py now uses lazy imports, so importing
-# agent.schemas.agent_response won't trigger main import
-from agent.schemas.agent_response import ErrorResponse
 from domains.calendars.repository import CalendarRepository
 from domains.calendars.providers.google import (
     GoogleCalendarAPIError,

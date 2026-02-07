@@ -14,6 +14,7 @@ enum AgentModalState {
         onCancel: () -> Void,
         isLoading: Bool
     )
+    case listening(text: String)
     case thinking(text: String)
     case notice(message: String)
     case error(message: String, context: String)
@@ -110,13 +111,29 @@ struct AgentModal: View {
             }
             .frame(maxWidth: .infinity)
             
+        case .listening(let text):
+            HStack(spacing: 12) {
+                Image(systemName: "mic.fill")
+                    .font(.system(size: 16, weight: .semibold))
+                    .foregroundStyle(ColorPalette.Semantic.primary)
+
+                Text(text.isEmpty ? "Listening..." : "\"\(text)\"")
+                    .font(.system(size: 14, weight: .regular))
+                    .foregroundColor(ColorPalette.Text.secondary)
+                    .lineLimit(1)
+                    .truncationMode(.head)
+            }
+            .frame(maxWidth: .infinity)
+            .padding(.horizontal, horizontalPadding)
+            .padding(.vertical, verticalPadding)
+
         case .thinking(let text):
             HStack(spacing: 12) {
                 ProgressView()
                     .progressViewStyle(.circular)
                     .scaleEffect(0.8)
                     .tint(ColorPalette.Text.secondary)
-                
+
                 Text("\"\(text)\"")
                     .font(.system(size: 14, weight: .regular))
                     .foregroundColor(ColorPalette.Text.secondary)

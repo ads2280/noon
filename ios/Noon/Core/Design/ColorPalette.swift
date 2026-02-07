@@ -190,6 +190,22 @@ enum ColorPalette {
                 alpha: 0.9
             )
         )
+        
+        /// Very subtle tint for weekend day columns in schedule view
+        static let weekendTint = dynamicColor(
+            light: UIColor(
+                displayP3Red: 0.0,
+                green: 0.0,
+                blue: 0.0,
+                alpha: 0.02
+            ),
+            dark: UIColor(
+                displayP3Red: 1.0,
+                green: 1.0,
+                blue: 1.0,
+                alpha: 0.025
+            )
+        )
     }
 
     enum Gradients {

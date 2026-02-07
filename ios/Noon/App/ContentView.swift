@@ -12,6 +12,7 @@ struct ContentView: View {
     @FocusState private var focusedField: Field?
     @State private var navigationPath = NavigationPath()
     @State private var showFriendsComingSoonAlert = false
+    @State private var scrollToNowTrigger = 0
 
     enum Field {
         case phone, code
@@ -36,15 +37,21 @@ struct ContentView: View {
                         // This view is shown via navigation, but we keep this for state consistency
                         EmptyView()
                     case .authenticated:
-                        AgentView()
+                        AgentView(scrollToNowTrigger: $scrollToNowTrigger)
                     }
                 }
             }
             .toolbar {
                 ToolbarItem(placement: .principal) {
-                    Text("noon")
-                        .font(.system(size: 20, weight: .semibold, design: .rounded))
-                        .foregroundStyle(ColorPalette.Gradients.primary)
+                    Button {
+                        // Trigger scroll to now when tapping the noon label
+                        scrollToNowTrigger += 1
+                    } label: {
+                        Text("noon")
+                            .font(.system(size: 20, weight: .semibold, design: .rounded))
+                            .foregroundStyle(ColorPalette.Gradients.primary)
+                    }
+                    .buttonStyle(.plain)
                 }
                 if viewModel.phase == .authenticated {
                     ToolbarItem(placement: .navigationBarTrailing) {

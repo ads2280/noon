@@ -34,6 +34,11 @@ from utils.errors import (
 
 
 TOKEN_REFRESH_LEEWAY = timedelta(minutes=5)
+# Proactive refresh interval to keep refresh tokens alive
+# Google refresh tokens expire after 6 months of inactivity
+# We refresh proactively every 30 days to ensure they stay active
+# This is aggressive but ensures users never need to re-authenticate
+PROACTIVE_REFRESH_INTERVAL = timedelta(days=30)  # 30 days
 
 logger = logging.getLogger(__name__)
 
@@ -625,14 +630,27 @@ class CalendarService:
         repo_duration = time_module.time() - repo_start
         log_step("backend.calendar_service._prepare_context.repository", repo_duration, details=f"accounts={len(accounts)} calendars={len(user_calendars)}")
         
-        calendars_by_id = {
-            calendar["google_calendar_id"]: calendar for calendar in user_calendars
-        }
-
         build_start = time_module.time()
         contexts = await self._build_account_contexts(accounts)
         build_duration = time_module.time() - build_start
         log_step("backend.calendar_service._prepare_context.build_contexts", build_duration, details=f"contexts={len(contexts)}")
+        
+        # Filter calendars to only include those from valid accounts
+        valid_account_ids = {ctx.id for ctx in contexts if ctx.id}
+        calendars_by_id = {
+            calendar["google_calendar_id"]: calendar
+            for calendar in user_calendars
+            if calendar.get("google_account_id") in valid_account_ids
+        }
+        
+        filtered_count = len(user_calendars) - len(calendars_by_id)
+        if filtered_count > 0:
+            logger.info(
+                "Filtered out %d calendar(s) from invalid accounts, using %d calendar(s) from %d valid account(s)",
+                filtered_count,
+                len(calendars_by_id),
+                len(contexts),
+            )
         
         method_duration = time_module.time() - method_start
         log_step("backend.calendar_service._prepare_context", method_duration)
@@ -641,17 +659,43 @@ class CalendarService:
     async def _build_account_contexts(
         self, accounts: List[Dict[str, Any]]
     ) -> List[AccountContext]:
-        """Build account contexts with providers."""
+        """Build account contexts with providers.
+        
+        Skips accounts with invalid/revoked refresh tokens and continues with valid ones.
+        If all accounts are invalid, raises an error.
+        """
         contexts: List[AccountContext] = []
+        invalid_accounts: List[str] = []
+        
         for account in accounts:
-            access_token = await self._ensure_access_token(account)
-            provider = GoogleCalendarProvider(
-                access_token=access_token,
-                refresh_token=account.get("refresh_token", ""),
+            account_email = account.get("email", "unknown")
+            try:
+                access_token = await self._ensure_access_token(account)
+                provider = GoogleCalendarProvider(
+                    access_token=access_token,
+                    refresh_token=account.get("refresh_token", ""),
+                )
+                contexts.append(
+                    AccountContext(account=account, access_token=access_token, provider=provider)
+                )
+            except GoogleCalendarAuthError as exc:
+                invalid_accounts.append(account_email)
+                logger.warning("Skipping account %s: %s", account_email, str(exc))
+        
+        if not contexts and accounts:
+            account_emails = [acc.get("email", "unknown") for acc in accounts]
+            raise GoogleCalendarAuthError(
+                f"All Google accounts ({', '.join(account_emails)}) have expired authentication. "
+                "Please re-link at least one Google Calendar account in the app settings."
             )
-            contexts.append(
-                AccountContext(account=account, access_token=access_token, provider=provider)
+        
+        if invalid_accounts:
+            logger.info(
+                "Skipped %d invalid account(s), using %d valid account(s)",
+                len(invalid_accounts),
+                len(contexts),
             )
+        
         return contexts
 
     async def _locate_event(
@@ -1022,43 +1066,74 @@ class CalendarService:
         return events
 
     async def _ensure_access_token(self, account: Dict[str, Any]) -> str:
-        """Ensure access token is valid, refresh if needed."""
+        """Ensure access token is valid, refresh if needed.
+        
+        Proactively refreshes tokens every 30 days to keep refresh tokens alive.
+        Google refresh tokens expire after 6 months of inactivity, so regular
+        refresh ensures users never need to re-authenticate.
+        """
         access_token = account.get("access_token")
-        expires_at = _parse_datetime(account.get("expires_at"))
-        if (
+        expires_at_raw = account.get("expires_at")
+        expires_at = _parse_datetime(expires_at_raw) if expires_at_raw else None
+        now = datetime.now(timezone.utc)
+        
+        # Check if access token is still valid
+        access_token_valid = (
             access_token
             and expires_at
-            and expires_at > datetime.now(timezone.utc) + TOKEN_REFRESH_LEEWAY
-        ):
-            return access_token
-        if access_token and expires_at is None:
+            and expires_at > now + TOKEN_REFRESH_LEEWAY
+        )
+        
+        # Check if we need to proactively refresh to keep the refresh token alive
+        metadata = account.get("metadata") or {}
+        last_refresh_str = metadata.get("last_token_refresh_at")
+        last_refresh = None
+        if last_refresh_str:
+            try:
+                last_refresh = _parse_datetime(last_refresh_str)
+            except (GoogleCalendarServiceError, ValueError, TypeError):
+                last_refresh = None
+        
+        # Determine if refresh is needed
+        needs_refresh = False
+        if not access_token_valid:
+            needs_refresh = True
+        elif last_refresh is None:
+            needs_refresh = True
+        elif now - last_refresh > PROACTIVE_REFRESH_INTERVAL:
+            needs_refresh = True
+        
+        if not needs_refresh:
             return access_token
 
+        # Refresh the token
         refresh_token = account.get("refresh_token")
         if not refresh_token:
             raise GoogleCalendarAuthError(
-                f"Google account {account.get('email') or account.get('id')} has no refresh token."
+                f"Google account {account.get('email') or account.get('id')} has no refresh token. Please re-link your Google Calendar account."
             )
 
-        tokens = await refresh_access_token(refresh_token)
-        expires = tokens.expires_at()
-        expires_at_str = expires.isoformat() if isinstance(expires, datetime) else expires
-        updated_metadata = _merge_metadata(
-            account.get("metadata"),
-            {
-                "last_token_refresh_at": datetime.now(timezone.utc).isoformat(),
-            },
-        )
-        updated = self.repository.update_account_tokens(
-            account["user_id"],
-            account["id"],
-            access_token=tokens.access_token,
-            refresh_token=tokens.refresh_token or refresh_token,
-            expires_at=expires_at_str,
-            metadata=updated_metadata,
-        )
-        account.update(updated)
-        return updated["access_token"]
+        try:
+            tokens = await refresh_access_token(refresh_token)
+            expires = tokens.expires_at()
+            expires_at_str = expires.isoformat() if isinstance(expires, datetime) else expires
+            updated_metadata = _merge_metadata(
+                metadata,
+                {"last_token_refresh_at": now.isoformat()},
+            )
+            updated = self.repository.update_account_tokens(
+                account["user_id"],
+                account["id"],
+                access_token=tokens.access_token,
+                refresh_token=tokens.refresh_token or refresh_token,
+                expires_at=expires_at_str,
+                metadata=updated_metadata,
+            )
+            account.update(updated)
+            return updated["access_token"]
+        except GoogleCalendarAuthError as exc:
+            # Refresh token is invalid/revoked - re-raise to be handled by caller
+            raise
 
     async def _handle_unauthorized(self, context: AccountContext) -> None:
         """Handle unauthorized error by refreshing token."""

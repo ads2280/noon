@@ -6,6 +6,7 @@
 //
 
 import SwiftUI
+import Foundation
 
 struct CalendarAccountsView: View {
     @StateObject private var viewModel: CalendarAccountsViewModel
@@ -358,6 +359,11 @@ private final class MockCalendarService: CalendarServicing {
 
     func createEvent(accessToken: String, request: CreateEventRequest) async throws -> CalendarCreateEventResponse {
         // Mock implementation - return a mock event
+        // Fetch user timezone from database
+        guard let userTimezone = await AuthTokenProvider.shared.fetchUserTimezone() else {
+            throw NSError(domain: "CalendarAccountsView", code: 1, userInfo: [NSLocalizedDescriptionKey: "User timezone is not configured. Please set your timezone in your account settings."])
+        }
+        
         let startEventTime: CalendarEvent.EventTime
         let endEventTime: CalendarEvent.EventTime
         
@@ -368,7 +374,7 @@ private final class MockCalendarService: CalendarServicing {
                 startEventTime = .timed(dateTime: startDateTime, timeZone: request.start.timeZone)
             } else {
                 let now = Date()
-                startEventTime = .timed(dateTime: now, timeZone: request.timezone)
+                startEventTime = .timed(dateTime: now, timeZone: userTimezone)
             }
         case .allDay:
             if let startDate = request.start.date {
@@ -387,7 +393,7 @@ private final class MockCalendarService: CalendarServicing {
                 endEventTime = .timed(dateTime: endDateTime, timeZone: request.end.timeZone)
             } else {
                 let now = Date()
-                endEventTime = .timed(dateTime: now.addingTimeInterval(3600), timeZone: request.timezone)
+                endEventTime = .timed(dateTime: now.addingTimeInterval(3600), timeZone: userTimezone)
             }
         case .allDay:
             if let endDate = request.end.date {
@@ -422,6 +428,11 @@ private final class MockCalendarService: CalendarServicing {
 
     func fetchEvent(accessToken: String, calendarId: String, eventId: String) async throws -> CalendarEvent {
         // Mock implementation - return a mock event
+        // Fetch user timezone from database
+        guard let userTimezone = await AuthTokenProvider.shared.fetchUserTimezone() else {
+            throw NSError(domain: "CalendarAccountsView", code: 1, userInfo: [NSLocalizedDescriptionKey: "User timezone is not configured. Please set your timezone in your account settings."])
+        }
+        
         let now = Date()
         return CalendarEvent(
             id: eventId,
@@ -430,12 +441,12 @@ private final class MockCalendarService: CalendarServicing {
             start: CalendarEvent.EventDateTime(
                 dateTime: now,
                 date: nil,
-                timeZone: TimeZone.autoupdatingCurrent.identifier
+                timeZone: userTimezone
             ),
             end: CalendarEvent.EventDateTime(
                 dateTime: now.addingTimeInterval(3600),
                 date: nil,
-                timeZone: TimeZone.autoupdatingCurrent.identifier
+                timeZone: userTimezone
             ),
             attendees: [],
             createdBy: nil,
@@ -452,6 +463,11 @@ private final class MockCalendarService: CalendarServicing {
         request: UpdateEventRequest
     ) async throws -> CalendarUpdateEventResponse {
         // Mock implementation - simulate an updated event with any provided fields
+        // Fetch user timezone from database
+        guard let userTimezone = await AuthTokenProvider.shared.fetchUserTimezone() else {
+            throw NSError(domain: "CalendarAccountsView", code: 1, userInfo: [NSLocalizedDescriptionKey: "User timezone is not configured. Please set your timezone in your account settings."])
+        }
+        
         let now = Date()
         let startEventTime: CalendarEvent.EventTime
         let endEventTime: CalendarEvent.EventTime
@@ -460,9 +476,9 @@ private final class MockCalendarService: CalendarServicing {
             switch start.type {
             case .timed:
                 if let dateTime = start.dateTime {
-                    startEventTime = .timed(dateTime: dateTime, timeZone: start.timeZone ?? request.timezone)
+                    startEventTime = .timed(dateTime: dateTime, timeZone: start.timeZone ?? userTimezone)
                 } else {
-                    startEventTime = .timed(dateTime: now, timeZone: request.timezone)
+                    startEventTime = .timed(dateTime: now, timeZone: userTimezone)
                 }
             case .allDay:
                 if let date = start.date {
@@ -475,16 +491,16 @@ private final class MockCalendarService: CalendarServicing {
                 }
             }
         } else {
-            startEventTime = .timed(dateTime: now, timeZone: request.timezone)
+            startEventTime = .timed(dateTime: now, timeZone: userTimezone)
         }
         
         if let end = request.end {
             switch end.type {
             case .timed:
                 if let dateTime = end.dateTime {
-                    endEventTime = .timed(dateTime: dateTime, timeZone: end.timeZone ?? request.timezone)
+                    endEventTime = .timed(dateTime: dateTime, timeZone: end.timeZone ?? userTimezone)
                 } else {
-                    endEventTime = .timed(dateTime: now.addingTimeInterval(3600), timeZone: request.timezone)
+                    endEventTime = .timed(dateTime: now.addingTimeInterval(3600), timeZone: userTimezone)
                 }
             case .allDay:
                 if let date = end.date {
@@ -497,7 +513,7 @@ private final class MockCalendarService: CalendarServicing {
                 }
             }
         } else {
-            endEventTime = .timed(dateTime: now.addingTimeInterval(3600), timeZone: request.timezone)
+            endEventTime = .timed(dateTime: now.addingTimeInterval(3600), timeZone: userTimezone)
         }
 
         let mockEvent = CalendarEvent(
