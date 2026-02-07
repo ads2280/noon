@@ -7,6 +7,7 @@
 
 import Combine
 import Foundation
+import Speech
 
 @MainActor
 final class AgentViewModel: ObservableObject {
@@ -36,6 +37,7 @@ final class AgentViewModel: ObservableObject {
     @Published var scrollTarget: ScheduleScrollTarget?
     @Published var isConfirmingAction: Bool = false
     @Published var transcriptionText: String?
+    @Published var liveTranscript: String = ""
     @Published var noticeMessage: String?
     @Published var errorState: AgentError?
     
@@ -94,10 +96,13 @@ final class AgentViewModel: ObservableObject {
     private let recorder: AgentAudioRecorder
     private let service: AgentActionServicing
     private let transcriptionService: TranscriptionServicing
+    private let speechRecognitionService: SpeechRecognitionServicing
+    private let useOnDeviceSpeechRecognition: Bool
     private let scheduleService: GoogleCalendarScheduleServicing
     private let calendarService: CalendarServicing
     private let showScheduleHandler: ShowScheduleActionHandling
     private let calendar: Foundation.Calendar = Foundation.Calendar.autoupdatingCurrent
+    private var liveTranscriptCancellable: AnyCancellable?
     
     private static let iso8601DateFormatter: ISO8601DateFormatter = {
         let formatter = ISO8601DateFormatter()
@@ -110,6 +115,8 @@ final class AgentViewModel: ObservableObject {
         recorder: AgentAudioRecorder? = nil,
         service: AgentActionServicing? = nil,
         transcriptionService: TranscriptionServicing? = nil,
+        speechRecognitionService: SpeechRecognitionServicing? = nil,
+        useOnDeviceSpeechRecognition: Bool = true,
         scheduleService: GoogleCalendarScheduleServicing? = nil,
         calendarService: CalendarServicing? = nil,
         showScheduleHandler: ShowScheduleActionHandling? = nil,
@@ -119,15 +126,27 @@ final class AgentViewModel: ObservableObject {
         self.recorder = recorder ?? AgentAudioRecorder()
         self.service = service ?? AgentActionService()
         self.transcriptionService = transcriptionService ?? TranscriptionService()
+        self.speechRecognitionService = speechRecognitionService ?? SpeechRecognitionService()
+        self.useOnDeviceSpeechRecognition = useOnDeviceSpeechRecognition
         self.scheduleService = scheduleService ?? GoogleCalendarScheduleService()
         self.calendarService = calendarService ?? CalendarService()
         self.showScheduleHandler = showScheduleHandler ?? ShowScheduleActionHandler()
         self.scheduleDate = calendar.startOfDay(for: initialScheduleDate)
         self.displayEvents = initialDisplayEvents ?? []
         self.hasLoadedSchedule = !(initialDisplayEvents?.isEmpty ?? true)
-        
-        // Pre-warm audio session to eliminate delay on first recording
-        self.recorder.prewarm()
+
+        // Pre-warm the appropriate audio service
+        if useOnDeviceSpeechRecognition {
+            self.speechRecognitionService.prewarm()
+            // Subscribe to partial transcripts for live UI updates
+            self.liveTranscriptCancellable = self.speechRecognitionService.partialTranscriptPublisher
+                .receive(on: DispatchQueue.main)
+                .sink { [weak self] text in
+                    self?.liveTranscript = text
+                }
+        } else {
+            self.recorder.prewarm()
+        }
     }
 
     func configure(authProvider: AuthSessionProviding) {
@@ -146,7 +165,11 @@ final class AgentViewModel: ObservableObject {
     }
     
     func cleanupAudioSession() {
-        recorder.cleanup()
+        if useOnDeviceSpeechRecognition {
+            speechRecognitionService.cleanup()
+        } else {
+            recorder.cleanup()
+        }
     }
 
     func startRecording() {
@@ -155,13 +178,18 @@ final class AgentViewModel: ObservableObject {
         isRecording = true
         displayState = .recording
         transcriptionText = nil // Clear previous transcription when starting new recording
+        liveTranscript = "" // Clear previous live transcript
         noticeMessage = nil // Clear previous notice when starting new recording
         errorState = nil // Clear any previous errors when starting new recording
         errorDismissTask?.cancel() // Cancel any pending error dismiss task
 
         Task { @MainActor in
             do {
-                try await recorder.startRecording()
+                if useOnDeviceSpeechRecognition {
+                    try await speechRecognitionService.startRecording()
+                } else {
+                    try await recorder.startRecording()
+                }
             } catch {
                 // Recording errors are not agent/calendar action errors, use generic handler
                 handle(error: error)
@@ -177,39 +205,60 @@ final class AgentViewModel: ObservableObject {
 
         Task { @MainActor in
             do {
-                // Stop recording
-                let stopStart = Date()
-                guard let recording = try await recorder.stopRecording() else {
-                    displayState = .idle
-                    return
+                let transcribedText: String
+
+                if useOnDeviceSpeechRecognition {
+                    // On-device path: transcription happened in real-time, just finalize
+                    let stopStart = Date()
+                    guard let transcript = try await speechRecognitionService.stopRecording(),
+                          !transcript.isEmpty else {
+                        displayState = .idle
+                        liveTranscript = ""
+                        return
+                    }
+                    let stopDuration = Date().timeIntervalSince(stopStart)
+                    await timingLogger.logStep("frontend.stop_and_transcribe_on_device", duration: stopDuration, details: "text_length=\(transcript.count) chars")
+
+                    transcribedText = transcript
+                    transcriptionText = transcribedText
+                    liveTranscript = ""
+                    displayState = .uploading
+                    print("Transcribed (on-device): \"\(transcribedText)\"")
+                } else {
+                    // Backend path: stop recorder → upload WAV → Deepgram → get text
+                    let stopStart = Date()
+                    guard let recording = try await recorder.stopRecording() else {
+                        displayState = .idle
+                        return
+                    }
+                    let stopDuration = Date().timeIntervalSince(stopStart)
+                    await timingLogger.logStep("frontend.stop_recording", duration: stopDuration)
+                    defer { try? FileManager.default.removeItem(at: recording.fileURL) }
+
+                    let startingToken = try await resolveAccessToken(initial: accessToken)
+                    displayState = .uploading
+
+                    let transcribeStart = Date()
+                    let transcriptionResult = try await transcribeAudio(
+                        recording: recording,
+                        accessToken: startingToken
+                    )
+                    let transcribeDuration = Date().timeIntervalSince(transcribeStart)
+                    await timingLogger.logStep("frontend.transcribe_audio", duration: transcribeDuration, details: "text_length=\(transcriptionResult.text.count) chars")
+
+                    transcribedText = transcriptionResult.text
+                    transcriptionText = transcribedText
+                    print("Transcribed: \"\(transcribedText)\"")
                 }
-                let stopDuration = Date().timeIntervalSince(stopStart)
-                await timingLogger.logStep("frontend.stop_recording", duration: stopDuration)
-                defer { try? FileManager.default.removeItem(at: recording.fileURL) }
 
                 let startingToken = try await resolveAccessToken(initial: accessToken)
 
-                displayState = .uploading
-                
-                // Step 1: Transcribe audio
-                let transcribeStart = Date()
-                let transcriptionResult = try await transcribeAudio(
-                    recording: recording,
-                    accessToken: startingToken
-                )
-                let transcribeDuration = Date().timeIntervalSince(transcribeStart)
-                await timingLogger.logStep("frontend.transcribe_audio", duration: transcribeDuration, details: "text_length=\(transcriptionResult.text.count) chars")
-                
-                let transcribedText = transcriptionResult.text
-                transcriptionText = transcribedText // Store transcription for display
-                print("Transcribed: \"\(transcribedText)\"")
-                
                 // Clear any existing highlights, notices, or confirmations from previous agent action state
                 agentAction = nil
                 focusEvent = nil
                 noticeMessage = nil
-                
-                // Step 2: Send to agent
+
+                // Send to agent
                 let agentStart = Date()
                 let (result, tokenUsed) = try await sendToAgent(
                     query: transcribedText,
@@ -218,7 +267,7 @@ final class AgentViewModel: ObservableObject {
                 let agentDuration = Date().timeIntervalSince(agentStart)
                 await timingLogger.logStep("frontend.send_to_agent", duration: agentDuration, details: "response_type=\(result.agentResponse.typeString)")
 
-                // Step 3: Handle response and display UI
+                // Handle response and display UI
                 let handleStart = Date()
                 try await handle(agentResponse: result.agentResponse, accessToken: tokenUsed)
                 let handleDuration = Date().timeIntervalSince(handleStart)
@@ -228,11 +277,11 @@ final class AgentViewModel: ObservableObject {
                 transcriptionText = nil
 
                 displayState = .completed(result: result)
-                
+
                 // Log total flow duration
                 let totalDuration = Date().timeIntervalSince(flowStart)
                 await timingLogger.logStep("frontend.total_flow", duration: totalDuration)
-                
+
                 // Set notice message for no-action responses (after clearing transcription)
                 switch result.agentResponse {
                 case .noAction(let response):
@@ -267,6 +316,7 @@ final class AgentViewModel: ObservableObject {
         displayState = .idle
         isRecording = false
         transcriptionText = nil
+        liveTranscript = ""
         clearNoticeMessage()
         errorState = nil
         errorDismissTask?.cancel()

@@ -125,16 +125,16 @@ struct AgentView: View {
     }
 
     private var agentModalState: AgentModalState? {
-        // Priority: error > confirmation > thinking > notice
+        // Priority: error > confirmation > listening > thinking > notice
         // Error has highest priority - critical state that needs immediate attention
         if let errorState = viewModel.errorState {
             return .error(
                 message: errorState.message,
                 context: errorState.context
             )
-        } else if let agentAction = viewModel.agentAction, 
-           agentAction.requiresConfirmation, 
-           viewModel.hasLoadedSchedule, 
+        } else if let agentAction = viewModel.agentAction,
+           agentAction.requiresConfirmation,
+           viewModel.hasLoadedSchedule,
            viewModel.transcriptionText == nil {
             return .confirmation(
                 actionType: actionType(for: agentAction),
@@ -148,6 +148,9 @@ struct AgentView: View {
                 },
                 isLoading: viewModel.isConfirmingAction
             )
+        } else if viewModel.isRecording {
+            // Show live transcript while recording (on-device speech recognition)
+            return .listening(text: viewModel.liveTranscript)
         } else if let transcriptionText = viewModel.transcriptionText, !transcriptionText.isEmpty {
             return .thinking(text: transcriptionText)
         } else if let noticeMessage = viewModel.noticeMessage, !noticeMessage.isEmpty {
