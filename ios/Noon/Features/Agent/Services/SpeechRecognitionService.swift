@@ -137,6 +137,7 @@ final class SpeechRecognitionService: NSObject, ObservableObject, SpeechRecognit
         // Create recognition request
         let request = SFSpeechAudioBufferRecognitionRequest()
         request.shouldReportPartialResults = true
+        request.addsPunctuation = true
         if recognizer.supportsOnDeviceRecognition {
             request.requiresOnDeviceRecognition = true
         }
