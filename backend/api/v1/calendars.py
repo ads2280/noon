@@ -10,7 +10,7 @@ from typing import Any, Dict
 from fastapi import APIRouter, Depends, HTTPException, Response, status
 from fastapi.responses import RedirectResponse
 
-from core.dependencies import AuthenticatedUser, get_current_user
+from core.dependencies import AuthenticatedUser, get_current_user, get_user_timezone
 from core.timing_logger import log_step, log_start
 from domains.calendars.schemas import (
     GoogleAccountResponse,
@@ -295,6 +295,9 @@ async def get_schedule(
     endpoint_start = time.time()
     log_start("backend.api.calendars.schedule", details=f"user_id={current_user.id} start={payload.start_date} end={payload.end_date}")
     
+    # Get user timezone from database
+    user_timezone = get_user_timezone(current_user.id)
+    
     service = CalendarService()
     try:
         service_start = time.time()
@@ -302,7 +305,7 @@ async def get_schedule(
             user_id=current_user.id,
             start_date=payload.start_date,
             end_date=payload.end_date,
-            timezone_name=payload.timezone,
+            timezone_name=user_timezone,
         )
         service_duration = time.time() - service_start
         log_step("backend.api.calendars.schedule.service", service_duration, details=f"event_count={len(result.get('events', []))}")
@@ -335,6 +338,9 @@ async def create_event(
     current_user: AuthenticatedUser = Depends(get_current_user),
 ) -> CreateEventResponse:
     """Create a new event in Google Calendar."""
+    # Get user timezone from database
+    user_timezone = get_user_timezone(current_user.id)
+    
     service = CalendarService()
     try:
         result = await service.create_event(
@@ -345,7 +351,7 @@ async def create_event(
             end=payload.end,
             description=payload.description,
             location=payload.location,
-            timezone_name=payload.timezone,
+            timezone_name=user_timezone,
         )
         return CreateEventResponse(event=CalendarEvent(**result))
     except GoogleCalendarUserError as exc:
@@ -442,6 +448,9 @@ async def update_event(
     current_user: AuthenticatedUser = Depends(get_current_user),
 ) -> UpdateEventResponse:
     """Update an existing event in Google Calendar."""
+    # Get user timezone from database
+    user_timezone = get_user_timezone(current_user.id)
+    
     service = CalendarService()
     try:
         result = await service.update_event(
@@ -453,7 +462,7 @@ async def update_event(
             end=payload.end,
             description=payload.description,
             location=payload.location,
-            timezone_name=payload.timezone,
+            timezone_name=user_timezone,
         )
         return UpdateEventResponse(event=CalendarEvent(**result))
     except GoogleCalendarUserError as exc:

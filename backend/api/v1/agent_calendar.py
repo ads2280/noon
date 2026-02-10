@@ -13,11 +13,10 @@ from zoneinfo import ZoneInfo
 
 from fastapi import APIRouter, Depends, HTTPException, status
 
-from core.dependencies import AuthenticatedUser, get_current_user
+from core.dependencies import AuthenticatedUser, get_current_user, get_user_timezone
 from domains.calendars.service import CalendarService
 from domains.calendars.schemas import ScheduleRequest
 from services import agent_calendar_service
-from db.session import get_service_client
 from utils.errors import (
     GoogleCalendarUserError,
     GoogleCalendarAuthError,
@@ -28,49 +27,6 @@ from utils.errors import (
 logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/agent/calendars", tags=["agent-calendars"])
-
-
-def _get_user_timezone(user_id: str) -> str:
-    """
-    Get user's timezone from database.
-    
-    Args:
-        user_id: User ID
-        
-    Returns:
-        IANA timezone name (e.g., "America/Los_Angeles")
-        
-    Raises:
-        HTTPException: If timezone not found or invalid
-    """
-    supabase_client = get_service_client()
-    try:
-        user_result = (
-            supabase_client.table("users")
-            .select("timezone")
-            .eq("id", user_id)
-            .single()
-            .execute()
-        )
-        
-        if user_result.data:
-            user_timezone = user_result.data.get("timezone")
-            if user_timezone and user_timezone.strip() and user_timezone.upper() != "UTC":
-                # Validate timezone
-                try:
-                    ZoneInfo(user_timezone)
-                    return user_timezone
-                except Exception:
-                    logger.warning(f"Invalid timezone for user {user_id}: {user_timezone}")
-                    # Fall back to UTC if invalid
-                    return "UTC"
-        
-        # Default to UTC if not set
-        return "UTC"
-    except Exception as e:
-        logger.error(f"Failed to get user timezone user_id={user_id}: {e}", exc_info=True)
-        # Fall back to UTC on error
-        return "UTC"
 
 
 def _parse_datetime_or_date(dt_str: str) -> datetime:
@@ -174,7 +130,7 @@ async def get_schedule(
         end_date = date.fromisoformat(end_date_str)
         
         # Get user timezone
-        user_timezone = _get_user_timezone(current_user.id)
+        user_timezone = get_user_timezone(current_user.id)
         
         # Use CalendarService which aggregates across ALL calendars
         service = CalendarService()

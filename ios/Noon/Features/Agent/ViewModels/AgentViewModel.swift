@@ -7,6 +7,7 @@
 
 import Combine
 import Foundation
+import Speech
 
 @MainActor
 final class AgentViewModel: ObservableObject {
@@ -33,10 +34,21 @@ final class AgentViewModel: ObservableObject {
     @Published private(set) var focusEvent: ScheduleFocusEvent?
     @Published private(set) var userTimezone: String?
     @Published var agentAction: AgentAction?
+    @Published var scrollTarget: ScheduleScrollTarget?
     @Published var isConfirmingAction: Bool = false
     @Published var transcriptionText: String?
+    @Published var liveTranscript: String = ""
     @Published var noticeMessage: String?
     @Published var errorState: AgentError?
+    
+    // Windowed event loading state
+    @Published private(set) var loadedWindowStart: Date?
+    @Published private(set) var loadedWindowEnd: Date?
+    @Published private(set) var isLoadingWindow: Bool = false
+    
+    // Window loading configuration
+    private let windowBuffer: Int = 14  // Days to load on each side of visible
+    private let reloadThreshold: Int = 5  // Days from edge to trigger reload
     
     private var noticeDismissTask: Task<Void, Never>?
     private var errorDismissTask: Task<Void, Never>?
@@ -84,10 +96,13 @@ final class AgentViewModel: ObservableObject {
     private let recorder: AgentAudioRecorder
     private let service: AgentActionServicing
     private let transcriptionService: TranscriptionServicing
+    private let speechRecognitionService: SpeechRecognitionServicing
+    private let useOnDeviceSpeechRecognition: Bool
     private let scheduleService: GoogleCalendarScheduleServicing
     private let calendarService: CalendarServicing
     private let showScheduleHandler: ShowScheduleActionHandling
     private let calendar: Foundation.Calendar = Foundation.Calendar.autoupdatingCurrent
+    private var liveTranscriptCancellable: AnyCancellable?
     
     private static let iso8601DateFormatter: ISO8601DateFormatter = {
         let formatter = ISO8601DateFormatter()
@@ -100,6 +115,8 @@ final class AgentViewModel: ObservableObject {
         recorder: AgentAudioRecorder? = nil,
         service: AgentActionServicing? = nil,
         transcriptionService: TranscriptionServicing? = nil,
+        speechRecognitionService: SpeechRecognitionServicing? = nil,
+        useOnDeviceSpeechRecognition: Bool = true,
         scheduleService: GoogleCalendarScheduleServicing? = nil,
         calendarService: CalendarServicing? = nil,
         showScheduleHandler: ShowScheduleActionHandling? = nil,
@@ -109,15 +126,27 @@ final class AgentViewModel: ObservableObject {
         self.recorder = recorder ?? AgentAudioRecorder()
         self.service = service ?? AgentActionService()
         self.transcriptionService = transcriptionService ?? TranscriptionService()
+        self.speechRecognitionService = speechRecognitionService ?? SpeechRecognitionService()
+        self.useOnDeviceSpeechRecognition = useOnDeviceSpeechRecognition
         self.scheduleService = scheduleService ?? GoogleCalendarScheduleService()
         self.calendarService = calendarService ?? CalendarService()
         self.showScheduleHandler = showScheduleHandler ?? ShowScheduleActionHandler()
         self.scheduleDate = calendar.startOfDay(for: initialScheduleDate)
         self.displayEvents = initialDisplayEvents ?? []
         self.hasLoadedSchedule = !(initialDisplayEvents?.isEmpty ?? true)
-        
-        // Pre-warm audio session to eliminate delay on first recording
-        self.recorder.prewarm()
+
+        // Pre-warm the appropriate audio service
+        if useOnDeviceSpeechRecognition {
+            self.speechRecognitionService.prewarm()
+            // Subscribe to partial transcripts for live UI updates
+            self.liveTranscriptCancellable = self.speechRecognitionService.partialTranscriptPublisher
+                .receive(on: DispatchQueue.main)
+                .sink { [weak self] text in
+                    self?.liveTranscript = text
+                }
+        } else {
+            self.recorder.prewarm()
+        }
     }
 
     func configure(authProvider: AuthSessionProviding) {
@@ -136,7 +165,11 @@ final class AgentViewModel: ObservableObject {
     }
     
     func cleanupAudioSession() {
-        recorder.cleanup()
+        if useOnDeviceSpeechRecognition {
+            speechRecognitionService.cleanup()
+        } else {
+            recorder.cleanup()
+        }
     }
 
     func startRecording() {
@@ -145,13 +178,18 @@ final class AgentViewModel: ObservableObject {
         isRecording = true
         displayState = .recording
         transcriptionText = nil // Clear previous transcription when starting new recording
+        liveTranscript = "" // Clear previous live transcript
         noticeMessage = nil // Clear previous notice when starting new recording
         errorState = nil // Clear any previous errors when starting new recording
         errorDismissTask?.cancel() // Cancel any pending error dismiss task
 
         Task { @MainActor in
             do {
-                try await recorder.startRecording()
+                if useOnDeviceSpeechRecognition {
+                    try await speechRecognitionService.startRecording()
+                } else {
+                    try await recorder.startRecording()
+                }
             } catch {
                 // Recording errors are not agent/calendar action errors, use generic handler
                 handle(error: error)
@@ -167,39 +205,60 @@ final class AgentViewModel: ObservableObject {
 
         Task { @MainActor in
             do {
-                // Stop recording
-                let stopStart = Date()
-                guard let recording = try await recorder.stopRecording() else {
-                    displayState = .idle
-                    return
+                let transcribedText: String
+
+                if useOnDeviceSpeechRecognition {
+                    // On-device path: transcription happened in real-time, just finalize
+                    let stopStart = Date()
+                    guard let transcript = try await speechRecognitionService.stopRecording(),
+                          !transcript.isEmpty else {
+                        displayState = .idle
+                        liveTranscript = ""
+                        return
+                    }
+                    let stopDuration = Date().timeIntervalSince(stopStart)
+                    await timingLogger.logStep("frontend.stop_and_transcribe_on_device", duration: stopDuration, details: "text_length=\(transcript.count) chars")
+
+                    transcribedText = transcript
+                    transcriptionText = transcribedText
+                    liveTranscript = ""
+                    displayState = .uploading
+                    print("Transcribed (on-device): \"\(transcribedText)\"")
+                } else {
+                    // Backend path: stop recorder → upload WAV → Deepgram → get text
+                    let stopStart = Date()
+                    guard let recording = try await recorder.stopRecording() else {
+                        displayState = .idle
+                        return
+                    }
+                    let stopDuration = Date().timeIntervalSince(stopStart)
+                    await timingLogger.logStep("frontend.stop_recording", duration: stopDuration)
+                    defer { try? FileManager.default.removeItem(at: recording.fileURL) }
+
+                    let startingToken = try await resolveAccessToken(initial: accessToken)
+                    displayState = .uploading
+
+                    let transcribeStart = Date()
+                    let transcriptionResult = try await transcribeAudio(
+                        recording: recording,
+                        accessToken: startingToken
+                    )
+                    let transcribeDuration = Date().timeIntervalSince(transcribeStart)
+                    await timingLogger.logStep("frontend.transcribe_audio", duration: transcribeDuration, details: "text_length=\(transcriptionResult.text.count) chars")
+
+                    transcribedText = transcriptionResult.text
+                    transcriptionText = transcribedText
+                    print("Transcribed: \"\(transcribedText)\"")
                 }
-                let stopDuration = Date().timeIntervalSince(stopStart)
-                await timingLogger.logStep("frontend.stop_recording", duration: stopDuration)
-                defer { try? FileManager.default.removeItem(at: recording.fileURL) }
 
                 let startingToken = try await resolveAccessToken(initial: accessToken)
 
-                displayState = .uploading
-                
-                // Step 1: Transcribe audio
-                let transcribeStart = Date()
-                let transcriptionResult = try await transcribeAudio(
-                    recording: recording,
-                    accessToken: startingToken
-                )
-                let transcribeDuration = Date().timeIntervalSince(transcribeStart)
-                await timingLogger.logStep("frontend.transcribe_audio", duration: transcribeDuration, details: "text_length=\(transcriptionResult.text.count) chars")
-                
-                let transcribedText = transcriptionResult.text
-                transcriptionText = transcribedText // Store transcription for display
-                print("Transcribed: \"\(transcribedText)\"")
-                
                 // Clear any existing highlights, notices, or confirmations from previous agent action state
                 agentAction = nil
                 focusEvent = nil
                 noticeMessage = nil
-                
-                // Step 2: Send to agent
+
+                // Send to agent
                 let agentStart = Date()
                 let (result, tokenUsed) = try await sendToAgent(
                     query: transcribedText,
@@ -208,7 +267,7 @@ final class AgentViewModel: ObservableObject {
                 let agentDuration = Date().timeIntervalSince(agentStart)
                 await timingLogger.logStep("frontend.send_to_agent", duration: agentDuration, details: "response_type=\(result.agentResponse.typeString)")
 
-                // Step 3: Handle response and display UI
+                // Handle response and display UI
                 let handleStart = Date()
                 try await handle(agentResponse: result.agentResponse, accessToken: tokenUsed)
                 let handleDuration = Date().timeIntervalSince(handleStart)
@@ -218,11 +277,11 @@ final class AgentViewModel: ObservableObject {
                 transcriptionText = nil
 
                 displayState = .completed(result: result)
-                
+
                 // Log total flow duration
                 let totalDuration = Date().timeIntervalSince(flowStart)
                 await timingLogger.logStep("frontend.total_flow", duration: totalDuration)
-                
+
                 // Set notice message for no-action responses (after clearing transcription)
                 switch result.agentResponse {
                 case .noAction(let response):
@@ -257,6 +316,7 @@ final class AgentViewModel: ObservableObject {
         displayState = .idle
         isRecording = false
         transcriptionText = nil
+        liveTranscript = ""
         clearNoticeMessage()
         errorState = nil
         errorDismissTask?.cancel()
@@ -449,7 +509,7 @@ final class AgentViewModel: ObservableObject {
 
     func loadCurrentDaySchedule(force: Bool = false) async throws {
         let today = Date()
-        try await loadSchedule(for: today, force: force)
+        try await loadWindowedEvents(centerDate: today, force: force)
     }
 
     /// Load schedule for a given date using the unified `/api/v1/calendars/schedule` endpoint.
@@ -505,6 +565,85 @@ final class AgentViewModel: ObservableObject {
         
         let loadDuration = Date().timeIntervalSince(loadStart)
         await timingLogger.logStep("frontend.load_schedule", duration: loadDuration)
+    }
+    
+    // MARK: - Windowed Event Loading
+    
+    /// Load events for a window centered on the given date.
+    /// Used by SwipeableScheduleView for dynamic loading as user scrolls.
+    func loadWindowedEvents(centerDate: Date, force: Bool = false) async throws {
+        let normalizedCenter = calendar.startOfDay(for: centerDate)
+        
+        // Calculate window: centerDate ± windowBuffer days
+        guard let windowStart = calendar.date(byAdding: .day, value: -windowBuffer, to: normalizedCenter),
+              let windowEnd = calendar.date(byAdding: .day, value: windowBuffer + 1, to: normalizedCenter) else {
+            return
+        }
+        
+        // Skip if already loaded (unless force)
+        if !force, let loadedStart = loadedWindowStart, let loadedEnd = loadedWindowEnd {
+            if windowStart >= loadedStart && windowEnd <= loadedEnd {
+                return  // Already loaded
+            }
+        }
+        
+        // Prevent concurrent loads
+        guard !isLoadingWindow else { return }
+        
+        isLoadingWindow = true
+        defer { isLoadingWindow = false }
+        
+        let startDateISO = Self.iso8601DateFormatter.string(from: windowStart)
+        let endDateISO = Self.iso8601DateFormatter.string(from: windowEnd)
+        
+        let token = try await resolveAccessToken(initial: nil)
+        let events = try await fetchScheduleEvents(
+            startDateISO: startDateISO,
+            endDateISO: endDateISO,
+            accessToken: token
+        )
+        
+        displayEvents = events
+        loadedWindowStart = windowStart
+        loadedWindowEnd = windowEnd
+        
+        // Only set scheduleDate on initial load - it's used as the stable reference point
+        // for SwipeableScheduleView. Changing it later would cause the view to jump.
+        if !hasLoadedSchedule {
+            scheduleDate = normalizedCenter
+        }
+        hasLoadedSchedule = true
+    }
+    
+    /// Called when the visible day range changes in SwipeableScheduleView.
+    /// Checks if a reload is needed based on proximity to window edges.
+    func onVisibleDaysChanged(firstVisibleDate: Date) {
+        Task {
+            await checkAndReloadIfNeeded(visibleDate: firstVisibleDate)
+        }
+    }
+    
+    private func checkAndReloadIfNeeded(visibleDate: Date) async {
+        let normalizedVisible = calendar.startOfDay(for: visibleDate)
+        
+        guard let loadedStart = loadedWindowStart,
+              let loadedEnd = loadedWindowEnd else {
+            // No window loaded yet, load initial
+            try? await loadWindowedEvents(centerDate: normalizedVisible)
+            return
+        }
+        
+        // Calculate distance to window edges
+        let daysToStart = calendar.dateComponents([.day], from: loadedStart, to: normalizedVisible).day ?? 0
+        let daysToEnd = calendar.dateComponents([.day], from: normalizedVisible, to: loadedEnd).day ?? 0
+        
+        // Reload if within threshold of edge OR if completely outside the window
+        let nearEdge = daysToStart < reloadThreshold || daysToEnd < reloadThreshold
+        let outsideWindow = daysToStart < 0 || daysToEnd < 0  // Before start or after end
+        
+        if nearEdge || outsideWindow {
+            try? await loadWindowedEvents(centerDate: normalizedVisible)
+        }
     }
 
     private func localizedMessage(for error: Error) -> String {
@@ -908,16 +1047,17 @@ final class AgentViewModel: ObservableObject {
             throw NSError(domain: "AgentViewModel", code: 1, userInfo: [NSLocalizedDescriptionKey: "Event has no start date"])
         }
 
-        // Load schedule for the event's day with focus event
-        try await loadSchedule(
-            for: eventDay,
-            force: true,
-            accessToken: accessToken,
-            focusEvent: focus
-        )
+        try await loadWindowedEvents(centerDate: eventDay, force: true)
+        self.focusEvent = focus
         
-        // Set the unified agent action state AFTER schedule is ready
-        // This ensures transcription stays visible until schedule is ready
+        let timeOfDay: Double?
+        if let start = event.start, case .timed(let dateTime, _) = start.eventTime {
+            timeOfDay = self.timeOfDay(from: dateTime)
+        } else {
+            timeOfDay = nil
+        }
+        scrollTarget = ScheduleScrollTarget(date: eventDay, timeOfDay: timeOfDay)
+        
         self.agentAction = .showEvent(response)
     }
 
@@ -957,16 +1097,11 @@ final class AgentViewModel: ObservableObject {
             throw NSError(domain: "AgentViewModel", code: 1, userInfo: [NSLocalizedDescriptionKey: "Event has no start date"])
         }
         
-        // Load schedule for the event's day with focus event
-        try await loadSchedule(
-            for: eventDay,
-            force: true,
-            accessToken: accessToken,
-            focusEvent: focus
-        )
+        try await loadWindowedEvents(centerDate: eventDay, force: true)
+        self.focusEvent = focus
         
-        // Set the unified agent action state AFTER schedule is ready
-        // This ensures modal only appears once schedule and transcription are coordinated
+        scrollTarget = ScheduleScrollTarget(date: eventDay, timeOfDay: nil)
+        
         self.agentAction = .deleteEvent(response)
     }
 
@@ -984,7 +1119,9 @@ final class AgentViewModel: ObservableObject {
         )
         
         // Create a merged CalendarEvent by applying update metadata to original event
-        let timezone = TimeZone.autoupdatingCurrent.identifier
+        guard let timezone = userTimezone else {
+            throw NSError(domain: "AgentViewModel", code: 1, userInfo: [NSLocalizedDescriptionKey: "User timezone is not configured. Please set your timezone in your account settings."])
+        }
         
         // Determine updated start date/time using enum pattern matching
         let updatedStart: CalendarEvent.EventDateTime?
@@ -1055,16 +1192,8 @@ final class AgentViewModel: ObservableObject {
             throw NSError(domain: "AgentViewModel", code: 1, userInfo: [NSLocalizedDescriptionKey: "Event has no start date"])
         }
         
-        // Fetch the schedule for that day
-        let dateRange = self.dateRange(for: eventDay)
-        let startDateISO = Self.iso8601DateFormatter.string(from: dateRange.start)
-        let endDateISO = Self.iso8601DateFormatter.string(from: dateRange.end)
-        
-        var displayEvents = try await fetchScheduleEvents(
-            startDateISO: startDateISO,
-            endDateISO: endDateISO,
-            accessToken: accessToken
-        )
+        try await loadWindowedEvents(centerDate: eventDay, force: true)
+        var displayEvents = self.displayEvents
         
         // Look up calendar color: first try from original event, then from existing events, then from calendar list
         var calendarColor = originalEvent.calendarColor
@@ -1161,11 +1290,17 @@ final class AgentViewModel: ObservableObject {
         // Set focus event with .update style (using preview event ID)
         let focus = ScheduleFocusEvent(eventID: tempEventID, style: .update)
         
-        // Update the schedule state directly
-        scheduleDate = dateRange.start
         self.displayEvents = displayEvents
         self.focusEvent = focus
         hasLoadedSchedule = true
+        
+        let updateTimeOfDay: Double?
+        if let start = updatedStart, case .timed(let dateTime, _) = start.eventTime {
+            updateTimeOfDay = timeOfDay(from: dateTime)
+        } else {
+            updateTimeOfDay = nil
+        }
+        scrollTarget = ScheduleScrollTarget(date: eventDay, timeOfDay: updateTimeOfDay)
         
         // Set the unified agent action state AFTER schedule is ready
         // This ensures modal only appears once schedule and transcription are coordinated
@@ -1175,7 +1310,9 @@ final class AgentViewModel: ObservableObject {
     // MARK: - Create Event Handling
     private func handleCreateEvent(response: CreateEventResponse, accessToken: String) async throws {
         let metadata = response.metadata
-        let timezone = TimeZone.autoupdatingCurrent.identifier
+        guard let timezone = userTimezone else {
+            throw NSError(domain: "AgentViewModel", code: 1, userInfo: [NSLocalizedDescriptionKey: "User timezone is not configured. Please set your timezone in your account settings."])
+        }
         
         // Determine event day and create EventDateTime objects using enum pattern matching
         let eventDay: Date
@@ -1213,16 +1350,8 @@ final class AgentViewModel: ObservableObject {
             throw NSError(domain: "AgentViewModel", code: 1, userInfo: [NSLocalizedDescriptionKey: "Start and end must both be timed or both be all-day events"])
         }
         
-        // Fetch the schedule for that day
-        let dateRange = self.dateRange(for: eventDay)
-        let startDateISO = Self.iso8601DateFormatter.string(from: dateRange.start)
-        let endDateISO = Self.iso8601DateFormatter.string(from: dateRange.end)
-        
-        var displayEvents = try await fetchScheduleEvents(
-            startDateISO: startDateISO,
-            endDateISO: endDateISO,
-            accessToken: accessToken
-        )
+        try await loadWindowedEvents(centerDate: eventDay, force: true)
+        var displayEvents = self.displayEvents
         
         // Look up calendar color: first try from existing events, then from calendar list
         var calendarColor = displayEvents.first(where: { $0.event.calendarId == metadata.calendar_id })?.event.calendarColor
@@ -1304,11 +1433,17 @@ final class AgentViewModel: ObservableObject {
         // Set focus event with .new style (using temp event ID)
         let focus = ScheduleFocusEvent(eventID: tempEventID, style: .new)
         
-        // Update the schedule state directly
-        scheduleDate = dateRange.start
         self.displayEvents = displayEvents
         self.focusEvent = focus
         hasLoadedSchedule = true
+        
+        let createTimeOfDay: Double?
+        if case .timed(let startDateTime, _) = startEventDateTime.eventTime {
+            createTimeOfDay = timeOfDay(from: startDateTime)
+        } else {
+            createTimeOfDay = nil
+        }
+        scrollTarget = ScheduleScrollTarget(date: eventDay, timeOfDay: createTimeOfDay)
         
         // Set the unified agent action state AFTER schedule is ready
         // This ensures modal only appears once schedule and transcription are coordinated
@@ -1355,7 +1490,15 @@ final class AgentViewModel: ObservableObject {
     
     private func confirmCreateEvent(response: CreateEventResponse, accessToken: String?, pendingAction: AgentAction) async {
         let metadata = response.metadata
-        let timezone = TimeZone.autoupdatingCurrent.identifier
+        guard let timezone = userTimezone else {
+            Task { @MainActor in
+                self.errorState = AgentError(
+                    message: "User timezone is not configured. Please set your timezone in your account settings.",
+                    context: "Creating event"
+                )
+            }
+            return
+        }
         
         Task { @MainActor in
             do {
@@ -1372,8 +1515,7 @@ final class AgentViewModel: ObservableObject {
                         end: BackendEventTime(timed: endDateTime, timeZone: timezone),
                         calendarId: metadata.calendar_id,
                         description: metadata.description,
-                        location: metadata.location,
-                        timezone: timezone
+                        location: metadata.location
                     )
                 case (.allDay(let startDateString), .allDay(let endDateString)):
                     // All-day event
@@ -1383,8 +1525,7 @@ final class AgentViewModel: ObservableObject {
                         end: BackendEventTime(allDay: endDateString),
                         calendarId: metadata.calendar_id,
                         description: metadata.description,
-                        location: metadata.location,
-                        timezone: timezone
+                        location: metadata.location
                     )
                 default:
                     throw NSError(domain: "AgentViewModel", code: 1, userInfo: [NSLocalizedDescriptionKey: "Start and end must both be timed or both be all-day events"])
@@ -1444,14 +1585,15 @@ final class AgentViewModel: ObservableObject {
                     }
                 }
                 
-                // Reload schedule for the day of the created event
-                // No focus event - display normally without special styling
-                try await loadSchedule(
-                    for: eventDay,
-                    force: true,
-                    accessToken: token,
-                    focusEvent: nil
-                )
+                try await loadWindowedEvents(centerDate: eventDay, force: true)
+                
+                let confirmCreateTimeOfDay: Double?
+                if let start = createdEvent.start, case .timed(let dateTime, _) = start.eventTime {
+                    confirmCreateTimeOfDay = timeOfDay(from: dateTime)
+                } else {
+                    confirmCreateTimeOfDay = nil
+                }
+                scrollTarget = ScheduleScrollTarget(date: eventDay, timeOfDay: confirmCreateTimeOfDay)
                 
                 print("Created event: \(createdEventID)")
             } catch {
@@ -1474,7 +1616,13 @@ final class AgentViewModel: ObservableObject {
                 var token = try await resolveAccessToken(initial: accessToken)
 
                 // Build update request from metadata using enum pattern matching
-                let timezone = TimeZone.autoupdatingCurrent.identifier
+                guard let timezone = userTimezone else {
+                    self.errorState = AgentError(
+                        message: "User timezone is not configured. Please set your timezone in your account settings.",
+                        context: "Updating event"
+                    )
+                    return
+                }
                 
                 // Convert DateTimeDict to BackendEventTime
                 let startBackendTime: BackendEventTime?
@@ -1507,8 +1655,7 @@ final class AgentViewModel: ObservableObject {
                     end: endBackendTime,
                     calendarId: calendarID,
                     description: metadata.description,
-                    location: metadata.location,
-                    timezone: timezone
+                    location: metadata.location
                 )
 
                 // Call calendar service to apply the update
@@ -1535,10 +1682,12 @@ final class AgentViewModel: ObservableObject {
                 // Determine the day of the updated event using enum pattern matching
                 // First try metadata (if start time was updated), otherwise fetch the event
                 let eventStartDate: Date
+                let isTimedEvent: Bool
                 if let startFromMetadata = metadata.start {
                     switch startFromMetadata {
                     case .timed(let dateTime):
                         eventStartDate = dateTime
+                        isTimedEvent = true
                     case .allDay(let dateString):
                         let dateFormatter = DateFormatter()
                         dateFormatter.dateFormat = "yyyy-MM-dd"
@@ -1548,6 +1697,7 @@ final class AgentViewModel: ObservableObject {
                             throw NSError(domain: "AgentViewModel", code: 1, userInfo: [NSLocalizedDescriptionKey: "Updated event has invalid start date"])
                         }
                         eventStartDate = parsedDate
+                        isTimedEvent = false
                     }
                 } else {
                     // Fetch the updated event to get its current start date
@@ -1560,6 +1710,7 @@ final class AgentViewModel: ObservableObject {
                         switch start.eventTime {
                         case .timed(let dateTime, _):
                             eventStartDate = dateTime
+                            isTimedEvent = true
                         case .allDay(let dateString):
                             let dateFormatter = DateFormatter()
                             dateFormatter.dateFormat = "yyyy-MM-dd"
@@ -1569,6 +1720,7 @@ final class AgentViewModel: ObservableObject {
                                 throw NSError(domain: "AgentViewModel", code: 1, userInfo: [NSLocalizedDescriptionKey: "Updated event has invalid start date"])
                             }
                             eventStartDate = parsedDate
+                            isTimedEvent = false
                         }
                     } else {
                         print("ERROR: Updated event \(eventID) has no start date")
@@ -1576,14 +1728,11 @@ final class AgentViewModel: ObservableObject {
                     }
                 }
                 
-                // Reload schedule for the event's day
                 let eventDay = calendar.startOfDay(for: eventStartDate)
-                try await loadSchedule(
-                    for: eventDay,
-                    force: true,
-                    accessToken: token,
-                    focusEvent: nil
-                )
+                try await loadWindowedEvents(centerDate: eventDay, force: true)
+
+                let confirmUpdateTimeOfDay: Double? = isTimedEvent ? timeOfDay(from: eventStartDate) : nil
+                scrollTarget = ScheduleScrollTarget(date: eventDay, timeOfDay: confirmUpdateTimeOfDay)
 
                 print("Updated event: \(eventID)")
             } catch {
@@ -1645,21 +1794,14 @@ final class AgentViewModel: ObservableObject {
                     }
                     
                     if let eventDay = eventDay {
-                        try await loadSchedule(
-                            for: eventDay,
-                            force: true,
-                            accessToken: token,
-                            focusEvent: nil
-                        )
+                        try await loadWindowedEvents(centerDate: eventDay, force: true)
                     } else {
-                        // Fallback: reload current schedule
                         let today = Date()
-                        try await loadSchedule(for: today, force: true, accessToken: token)
+                        try await loadWindowedEvents(centerDate: today, force: true)
                     }
                 } else {
-                    // Fallback: reload current schedule
                     let today = Date()
-                    try await loadSchedule(for: today, force: true, accessToken: token)
+                    try await loadWindowedEvents(centerDate: today, force: true)
                 }
                 
                 print("Deleted event: \(eventID)")
@@ -1680,12 +1822,9 @@ final class AgentViewModel: ObservableObject {
         }
         
         let config = showScheduleHandler.configuration(for: agentResponse)
-        try await loadSchedule(
-            for: config.date,
-            force: true,
-            accessToken: accessToken,
-            focusEvent: config.focusEvent
-        )
+        try await loadWindowedEvents(centerDate: config.date, force: true)
+        
+        scrollTarget = ScheduleScrollTarget(date: config.date, timeOfDay: nil)
         
         // Set the unified agent action state AFTER schedule is ready
         // This ensures transcription stays visible until schedule is ready
@@ -1704,6 +1843,14 @@ final class AgentViewModel: ObservableObject {
     }
     
     // MARK: - Date Range Helpers
+    
+    /// Fractional hour (0–24) from a Date for vertical scroll positioning
+    private func timeOfDay(from date: Date) -> Double {
+        let hour = calendar.component(.hour, from: date)
+        let minute = calendar.component(.minute, from: date)
+        let second = calendar.component(.second, from: date)
+        return Double(hour) + Double(minute) / 60.0 + Double(second) / 3600.0
+    }
     
     private func dateRange(for date: Date) -> (start: Date, end: Date) {
         let normalizedDate = calendar.startOfDay(for: date)
