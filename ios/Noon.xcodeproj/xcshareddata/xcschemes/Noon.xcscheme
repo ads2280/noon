@@ -53,7 +53,7 @@
       <EnvironmentVariables>
          <EnvironmentVariable
             key = "BACKEND_URL"
-            value = "https://unesoteric-yi-doggedly.ngrok-free.dev"
+            value = "https://noon-green.vercel.app"
             isEnabled = "YES">
          </EnvironmentVariable>
          <EnvironmentVariable
@@ -74,11 +74,11 @@
          <EnvironmentVariable
             key = "OS_ACTIVITY_MODE"
             value = "disable"
-            isEnabled = "YES">
+            isEnabled = "NO">
          </EnvironmentVariable>
          <EnvironmentVariable
             key = "AGENT_BASE_URL"
-            value = "https://unesoteric-yi-doggedly.ngrok-free.dev"
+            value = "https://noon-green.vercel.app"
             isEnabled = "YES">
          </EnvironmentVariable>
       </EnvironmentVariables>

@@ -421,7 +421,6 @@ struct CreateEventRequest: Encodable {
     let calendarId: String
     let description: String?
     let location: String?
-    let timezone: String
 
     enum CodingKeys: String, CodingKey {
         case summary
@@ -430,7 +429,6 @@ struct CreateEventRequest: Encodable {
         case calendarId = "calendar_id"
         case description
         case location
-        case timezone
     }
     
     func encode(to encoder: Encoder) throws {
@@ -440,7 +438,6 @@ struct CreateEventRequest: Encodable {
         try container.encode(start, forKey: .start)
         try container.encode(end, forKey: .end)
         try container.encode(calendarId, forKey: .calendarId)
-        try container.encode(timezone, forKey: .timezone)
         
         // Encode optional fields
         if let description = description {
@@ -463,7 +460,6 @@ struct UpdateEventRequest: Encodable {
     let calendarId: String
     let description: String?
     let location: String?
-    let timezone: String
 
     enum CodingKeys: String, CodingKey {
         case summary
@@ -472,7 +468,6 @@ struct UpdateEventRequest: Encodable {
         case calendarId = "calendar_id"
         case description
         case location
-        case timezone
     }
     
     func encode(to encoder: Encoder) throws {
@@ -496,7 +491,6 @@ struct UpdateEventRequest: Encodable {
         if let location = location {
             try container.encode(location, forKey: .location)
         }
-        try container.encode(timezone, forKey: .timezone)
     }
 }
 

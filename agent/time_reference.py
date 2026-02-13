@@ -179,9 +179,9 @@ def _build_relative_dates_cheat_sheet(current_datetime: datetime, timezone: str)
             this_weekend_sat = today - timedelta(days=1)
             this_weekend_sun = today
         
-        # "Next week" = Same as "this week" (upcoming Monday-Friday)
-        next_week_start = this_week_start
-        next_week_end = this_week_end
+        # "Next week" = Week following "this week" (next Monday-Friday)
+        next_week_start = this_week_start + timedelta(days=7)
+        next_week_end = next_week_start + timedelta(days=4)
         
         # "Next weekend" = Weekend following "this weekend"
         next_weekend_sat = this_weekend_sat + timedelta(days=7)

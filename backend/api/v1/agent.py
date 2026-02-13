@@ -1,9 +1,7 @@
 """Agent endpoint for invoking the LangGraph calendar agent."""
 
 import logging
-import sys
 import time
-from pathlib import Path
 from datetime import datetime, timezone
 from zoneinfo import ZoneInfo
 from urllib.parse import urlparse
@@ -11,14 +9,7 @@ from fastapi import APIRouter, Depends, HTTPException, UploadFile, File, Request
 from pydantic import BaseModel
 from langgraph_sdk import get_client
 
-# Add parent directory to path to import from agent package
-_parent_dir = Path(__file__).parent.parent.parent.parent
-if str(_parent_dir) not in sys.path:
-    sys.path.insert(0, str(_parent_dir))
-
-# Import schemas - agent/__init__.py now uses lazy imports, so importing
-# agent.schemas.agent_response won't trigger main import
-from agent.schemas.agent_response import (
+from schemas.agent_response import (
     AgentResponse,
     ErrorResponse,
     ShowEventResponse,
@@ -30,12 +21,11 @@ from agent.schemas.agent_response import (
 )
 from pydantic import ValidationError
 from schemas.user import AuthenticatedUser
-from core.dependencies import get_current_user
+from core.dependencies import get_current_user, get_user_timezone
 from core.config import get_settings
 from core.timing_logger import log_step, log_start
 from domains.transcription.service import TranscriptionService
 from services import agent_calendar_service
-from db.session import get_service_client
 
 logger = logging.getLogger(__name__)
 
@@ -179,65 +169,16 @@ async def agent_action(
 
         # Get user timezone from users table
         timezone_start = time.time()
-        supabase_client = get_service_client()
-        user_timezone = None
-        try:
-            user_result = (
-                supabase_client.table("users")
-                .select("timezone")
-                .eq("id", current_user.id)
-                .single()
-                .execute()
-            )
-            
-            if user_result.data:
-                user_timezone = user_result.data.get("timezone")
-            else:
-                logger.error(f"No user data returned user_id={current_user.id}")
-            
-            timezone_duration = time.time() - timezone_start
-            log_step("backend.api.action.get_timezone", timezone_duration)
-                
-        except Exception as e:
-            logger.error(
-                f"Failed to get user timezone user_id={current_user.id}: {e}",
-                exc_info=True,
-            )
-            raise HTTPException(
-                status_code=500,
-                detail="An error occurred while retrieving your timezone settings. Please try again."
-            )
+        user_timezone = get_user_timezone(current_user.id)
+        timezone_duration = time.time() - timezone_start
+        log_step("backend.api.action.get_timezone", timezone_duration)
         
-        # Validate timezone is set and not default 'UTC'
-        if not user_timezone or user_timezone.strip() == "":
-            logger.error(f"User timezone not configured user_id={current_user.id}")
-            raise HTTPException(
-                status_code=400,
-                detail="User timezone is not configured. Please set your timezone in your account settings."
-            )
-        
-        if user_timezone.upper() == "UTC":
-            raise HTTPException(
-                status_code=400,
-                detail="User timezone is not configured. Please set your timezone in your account settings."
-            )
-        
-        # Validate timezone is a valid IANA timezone
+        # Convert to user's timezone for current time calculation
         current_utc = datetime.now(timezone.utc)
-        try:
-            user_tz = ZoneInfo(user_timezone)
-            current_user_time = current_utc.astimezone(user_tz)
-            current_time_str = current_user_time.isoformat()
-            current_day_of_week = current_user_time.strftime("%A")  # Full day name
-        except Exception as e:
-            logger.error(
-                f"Invalid timezone user_id={current_user.id} timezone={user_timezone}: {e}",
-                exc_info=True,
-            )
-            raise HTTPException(
-                status_code=400,
-                detail=f"Invalid timezone configuration: {user_timezone}. Please set a valid timezone in your account settings."
-            )
+        user_tz = ZoneInfo(user_timezone)
+        current_user_time = current_utc.astimezone(user_tz)
+        current_time_str = current_user_time.isoformat()
+        current_day_of_week = current_user_time.strftime("%A")  # Full day name
 
         input_state = {
             "query": query_text,

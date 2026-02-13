@@ -27,6 +27,10 @@ from utils.errors import (
     GoogleStateError,
 )
 
+import logging
+
+logger = logging.getLogger(__name__)
+
 # Scopes required for Google Calendar API
 SCOPES = ["https://www.googleapis.com/auth/calendar"]
 
@@ -669,6 +673,12 @@ def build_authorization_url(state: str) -> str:
 async def exchange_code_for_tokens(code: str) -> GoogleTokens:
     """Exchange OAuth code for tokens."""
     settings = get_settings()
+    
+    if not settings.google_client_id or not settings.google_client_secret:
+        raise GoogleOAuthError(
+            "Google OAuth credentials not configured. Please set GOOGLE_CLIENT_ID and GOOGLE_CLIENT_SECRET."
+        )
+    
     payload = {
         "client_id": settings.google_client_id,
         "client_secret": settings.google_client_secret,
@@ -681,8 +691,10 @@ async def exchange_code_for_tokens(code: str) -> GoogleTokens:
             TOKEN_ENDPOINT, data=payload, headers={"Accept": "application/json"}
         )
     if response.status_code != httpx.codes.OK:
+        error_text = response.text
+        logger.error("Token exchange failed: status=%d error=%s", response.status_code, error_text)
         raise GoogleOAuthError(
-            f"Token exchange failed with status {response.status_code}: {response.text}"
+            f"Token exchange failed with status {response.status_code}: {error_text}"
         )
     data = response.json()
     access_token = data.get("access_token")
@@ -704,6 +716,16 @@ async def exchange_code_for_tokens(code: str) -> GoogleTokens:
 async def refresh_access_token(refresh_token: str) -> GoogleTokens:
     """Refresh Google OAuth access token."""
     settings = get_settings()
+    
+    if not settings.google_client_id or not settings.google_client_secret:
+        raise GoogleOAuthError(
+            "Google OAuth credentials not configured. Please set GOOGLE_CLIENT_ID and GOOGLE_CLIENT_SECRET."
+        )
+    if not refresh_token:
+        raise GoogleCalendarAuthError(
+            "Google account has no refresh token. Please re-link your Google Calendar account."
+        )
+    
     payload = {
         "client_id": settings.google_client_id,
         "client_secret": settings.google_client_secret,
@@ -715,21 +737,29 @@ async def refresh_access_token(refresh_token: str) -> GoogleTokens:
             TOKEN_ENDPOINT, data=payload, headers={"Accept": "application/json"}
         )
     if response.status_code != httpx.codes.OK:
-        # Parse error response to check for invalid_grant
+        error_text = response.text
+        error_data = None
         try:
             error_data = response.json()
+        except (ValueError, KeyError):
+            pass
+        
+        logger.error("Token refresh failed: status=%d error=%s", response.status_code, error_text)
+        
+        if error_data:
             error_type = error_data.get("error")
             if error_type == "invalid_grant":
-                # Refresh token is invalid/revoked - user needs to re-authenticate
+                logger.warning("Refresh token invalid/revoked: %s", error_data.get("error_description", ""))
                 raise GoogleCalendarAuthError(
                     "Google account authentication expired. Please re-link your Google Calendar account."
                 )
-        except (ValueError, KeyError):
-            # If we can't parse the error, fall through to generic error
-            pass
+            elif error_type == "invalid_client":
+                raise GoogleOAuthError(
+                    "Google OAuth client credentials are invalid. Please check GOOGLE_CLIENT_ID and GOOGLE_CLIENT_SECRET."
+                )
         
         raise GoogleOAuthError(
-            f"Token refresh failed with status {response.status_code}: {response.text}"
+            f"Token refresh failed with status {response.status_code}: {error_text}"
         )
     data = response.json()
     access_token = data.get("access_token")

@@ -1,7 +1,17 @@
 """Calendar scheduling agent using LangGraph and OpenAI."""
 
-import logging
+import sys
 import os
+from pathlib import Path
+
+# Add parent directory to Python path to allow importing agent package
+# This is needed when main.py is loaded directly (e.g., by LangChain)
+_current_file = Path(__file__).resolve()
+_parent_dir = _current_file.parent.parent
+if str(_parent_dir) not in sys.path:
+    sys.path.insert(0, str(_parent_dir))
+
+import logging
 import time
 from langgraph.graph import StateGraph, END, START
 from typing_extensions import TypedDict
